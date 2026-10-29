@@ -27,12 +27,14 @@ const SWAY = `
 
 function faceted(geo) { const g = geo.toNonIndexed(); g.computeVertexNormals(); return g; }
 
-export function buildTrees(data, surf, date) {
+export function buildTrees(data, surf, date, style = 'cardboard', inside = () => true) {
   const season = seasonOf(date);
+  const felt = style === 'felt';
+  const ball = (d) => felt ? new THREE.IcosahedronGeometry(1, 3) : faceted(new THREE.IcosahedronGeometry(1, d));
   const parts = {
-    crown: faceted(new THREE.IcosahedronGeometry(1, 1)).translate(0, 0, 0),
-    small: faceted(new THREE.IcosahedronGeometry(1, 0)),
-    birch: faceted(new THREE.IcosahedronGeometry(1, 1)),
+    crown: ball(1),
+    small: ball(0),
+    birch: ball(1),
     cone: faceted(mergeGeometries([
       new THREE.ConeGeometry(1, .55, 7).translate(0, .28, 0).toNonIndexed(),
       new THREE.ConeGeometry(.78, .48, 7).translate(0, .58, 0).toNonIndexed(),
@@ -40,12 +42,13 @@ export function buildTrees(data, surf, date) {
     ])),
     trunk: new THREE.CylinderGeometry(.5, .7, 1, 6).translate(0, .5, 0).toNonIndexed(),
   };
-  const leafMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95, flatShading: true }), { key: 'leaf', vertexBody: SWAY });
-  const trunkMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }), { key: 'trunk' });
+  const leafMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95, flatShading: !felt }), { key: 'leaf' + (felt ? 'f' : ''), cat: 'GREEN', vertexBody: SWAY });
+  const trunkMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }), { key: 'trunk', cat: 'TRUNK' });
 
   const lists = { crown: [], small: [], birch: [], cone: [], trunk: [] };
   const rnd = (s, k) => { const x = Math.sin(s * 9301 + k * 49297) * 233280; return x - Math.floor(x); };
   for (const [x, z, h0, r0, kind, s] of data.trees) {
+    if (!inside(x, z, Math.min(r0, 3) * .7)) continue;
     const y = surf(x, z);
     const h = Math.max(h0, 1.2), r = r0;
     const lc = LEAF[season], pick = (arr) => arr[Math.floor(rnd(s, 1) * arr.length) % arr.length];
@@ -89,13 +92,15 @@ export function buildTrees(data, surf, date) {
 function shadeHex(hex, d) { return '#' + new THREE.Color(hex).offsetHSL(0, 0, d).getHexString(); }
 
 // Hedges: boxes of clipped green along plot edges.
-export function buildHedges(data, surf, date) {
+export function buildHedges(data, surf, date, inside = () => true) {
   const season = seasonOf(date);
   const geo = faceted(new THREE.BoxGeometry(1, 1, 1).translate(0, .5, 0));
-  const mat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }), { key: 'hedge' });
-  const mesh = new THREE.InstancedMesh(geo, mat, data.hedges.length);
+  const mat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }), { key: 'hedge', cat: 'GREEN' });
+  const hedges = data.hedges.filter(hd => hd.p.every(p => inside(p[0], p[1], .6)));
+  const mesh = new THREE.InstancedMesh(geo, mat, Math.max(1, hedges.length));
+  mesh.count = hedges.length;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
-  data.hedges.forEach((hd, i) => {
+  hedges.forEach((hd, i) => {
     const [a, b] = [hd.p[0], hd.p[hd.p.length - 1]];
     const cx = (a[0] + b[0]) / 2, cz = (a[1] + b[1]) / 2, len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     const y = Math.min(surf(a[0], a[1]), surf(b[0], b[1]), surf(cx, cz));

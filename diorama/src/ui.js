@@ -53,13 +53,19 @@ export function setupUI({ state, events, onTerrain, onTime, onView }) {
     document.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
     document.querySelectorAll('.menu-btn').forEach(x => x.classList.remove('on'));
   });
+  const LOADING = { cardboard: 'Cutting cardboard…', white: 'Sanding the model…', felt: 'Felting the wool…' };
+  function rebuildNow(kind) {
+    const l = document.getElementById('loading');
+    l.textContent = LOADING[state.style]; l.classList.remove('done');
+    setTimeout(() => { onTerrain(kind); l.classList.add('done'); }, 40);
+  }
   const seg = (name, key, parse, rebuild) => {
     document.querySelectorAll(`[data-${name}]`).forEach(b => {
       b.classList.toggle('on', parse(b.dataset[name]) === state[key]);
       b.addEventListener('click', () => {
         state[key] = parse(b.dataset[name]);
         document.querySelectorAll(`[data-${name}]`).forEach(x => x.classList.toggle('on', x === b));
-        if (rebuild) { document.getElementById('loading').classList.remove('done'); setTimeout(() => { onTerrain(); document.getElementById('loading').classList.add('done'); }, 30); }
+        if (rebuild) rebuildNow(rebuild);
       });
     });
   };
@@ -68,6 +74,13 @@ export function setupUI({ state, events, onTerrain, onTime, onView }) {
   seg('tilt', 'tilt', (v) => v === '1');
   seg('labels', 'labels', (v) => v === '1');
   seg('spin', 'autoRotate', (v) => v === '1');
+  seg('style', 'style', String, 'style');
+  seg('shape', 'shape', String, 'plate');
+  const crop = $('#crop'), cropOut = $('#crop-out');
+  const showCrop = () => { cropOut.textContent = `${Math.round(crop.value * 2)} m`; };
+  crop.value = state.crop; showCrop();
+  crop.addEventListener('input', showCrop);
+  crop.addEventListener('change', () => { state.crop = Number(crop.value); rebuildNow('plate'); });
   document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => onView(b.dataset.view)));
 
   let status = 'loading live weather…';

@@ -20,11 +20,11 @@ function resample(pts, maxStep) {
 // Roads are smooth cardboard strips laid over the contour steps; cars drive on them.
 export function roadHeight(field) { return (x, z) => field.sample(x, z) + 0.18; }
 
-export function buildRoads(data, field, surf) {
+export function buildRoads(data, field, surf, plate) {
   const top = [], topN = [], topC = [], skirt = [], skirtN = [];
   const ry = roadHeight(field);
   const half = data.half;
-  const inside = (p) => Math.abs(p[0]) <= half && Math.abs(p[1]) <= half;
+  const inside = (p) => plate.inside(p[0], p[1]);
   for (const rd of data.roads) {
     if (!RIBBON.has(rd.k) || rd.p.length < 2) continue;
     const pts = resample(rd.p, 1.5).map(p => [Math.max(-half, Math.min(half, p[0])), Math.max(-half, Math.min(half, p[1]))]);
@@ -38,8 +38,8 @@ export function buildRoads(data, field, surf) {
       L.push([pts[k][0] + nx * w, pts[k][1] + nz * w]); R.push([pts[k][0] - nx * w, pts[k][1] - nz * w]);
     }
     for (let k = 0; k + 1 < pts.length; k++) {
-      if (!inside(pts[k]) && !inside(pts[k + 1])) continue;
-      const q = [L[k], R[k], R[k + 1], L[k + 1]].map(p => [Math.max(-half, Math.min(half, p[0])), Math.max(-half, Math.min(half, p[1]))]);
+      const q = [L[k], R[k], R[k + 1], L[k + 1]];
+      if (!q.every(inside)) continue;
       const Y = q.map(p => ry(p[0], p[1]));
       const v = q.map((p, i) => [p[0], Y[i], p[1]]);
       // two triangles, facing up
@@ -69,7 +69,7 @@ export function buildRoads(data, field, surf) {
   g.setAttribute('normal', new THREE.Float32BufferAttribute(topN, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(topC, 3));
   const roadMat = cardboard(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .9, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }), {
-    key: 'road',
+    key: 'road', cat: 'ROAD',
     colorBody: `diffuseColor.rgb *= .92 + .16 * vnoise(vW.xz * 1.7);`,
     uniforms: { uSnow: ROAD_SNOW },
   });
@@ -79,7 +79,7 @@ export function buildRoads(data, field, surf) {
   sg.setAttribute('position', new THREE.Float32BufferAttribute(skirt, 3));
   sg.setAttribute('normal', new THREE.Float32BufferAttribute(skirtN, 3));
   const skirtMat = cardboard(new THREE.MeshStandardMaterial({ color: '#b89466', roughness: .95 }), {
-    key: 'skirt', fragmentHead: WALL_GLSL, colorBody: `diffuseColor.rgb = kraft(vW, vWN, .45);`,
+    key: 'skirt', cat: 'ROAD', fragmentHead: WALL_GLSL, colorBody: `diffuseColor.rgb = uStyle > 1.5 ? vec3(.36, .35, .37) : kraft(vW, vWN, .45);`,
   });
   const skirts = new THREE.Mesh(sg, skirtMat);
   skirts.receiveShadow = true; skirts.castShadow = true;
@@ -116,7 +116,7 @@ export function roadGraph(data) {
 }
 
 // Street lamps every ~32 m along drivable roads, alternating sides.
-export function buildLamps(data, field) {
+export function buildLamps(data, field, plate) {
   const ry = roadHeight(field);
   const spots = [];
   const half = data.half - 2;
@@ -131,7 +131,7 @@ export function buildLamps(data, field) {
       acc = 0; side = -side;
       const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
       const x = b[0] + (-dz / l) * (r.w / 2 + .7) * side, z = b[1] + (dx / l) * (r.w / 2 + .7) * side;
-      if (Math.abs(x) > half || Math.abs(z) > half) continue;
+      if (!plate.inside(x, z, 1.2)) continue;
       if (spots.some(s => (s.x - x) ** 2 + (s.z - z) ** 2 < 220)) continue;
       spots.push({ x, z, y: ry(x, z) - .18, ax: dx / l, az: dz / l, side, nx: -dz / l * -side, nz: dx / l * -side });
     }
@@ -141,10 +141,11 @@ export function buildLamps(data, field) {
     new THREE.BoxGeometry(.9, .1, .1).translate(.42, 5.15, 0).toNonIndexed(),
   ]);
   const head = new THREE.BoxGeometry(.55, .18, .3).translate(.85, 5.05, 0);
-  const poleMat = cardboard(new THREE.MeshStandardMaterial({ color: '#3c3a38', roughness: .7 }), { key: 'pole' });
+  const poleMat = cardboard(new THREE.MeshStandardMaterial({ color: '#3c3a38', roughness: .7 }), { key: 'pole', cat: 'DARK' });
   const headMat = new THREE.MeshStandardMaterial({ color: '#f3e7c8', emissive: '#ffcf80', emissiveIntensity: 0 });
-  const poles = new THREE.InstancedMesh(pole, poleMat, spots.length);
-  const heads = new THREE.InstancedMesh(head, headMat, spots.length);
+  const poles = new THREE.InstancedMesh(pole, poleMat, Math.max(1, spots.length));
+  const heads = new THREE.InstancedMesh(head, headMat, Math.max(1, spots.length));
+  poles.count = heads.count = spots.length;
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1);
   spots.forEach((s, i) => {
     q.setFromAxisAngle(up, -Math.atan2(s.nz, s.nx));
@@ -155,7 +156,8 @@ export function buildLamps(data, field) {
   // pools of light on the road: additive discs that only show at night
   const tex = radialTexture('rgba(255,205,130,1)');
   const poolMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, polygonOffset: true, polygonOffsetFactor: -4 });
-  const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), poolMat, spots.length);
+  const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), poolMat, Math.max(1, spots.length));
+  pools.count = spots.length;
   spots.forEach((s, i) => {
     const px = s.x + s.nx * .85, pz = s.z + s.nz * .85;
     m.compose(new THREE.Vector3(px, ry(px, pz) + .08, pz), new THREE.Quaternion(), new THREE.Vector3(8.5, 1, 8.5));

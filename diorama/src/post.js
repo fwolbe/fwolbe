@@ -20,15 +20,15 @@ export const TiltShiftShader = {
 
 // Final grade: warm vignette, a touch of saturation and paper grain.
 export const FinishShader = {
-  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, vignette: { value: .32 }, night: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, time: { value: 0 }, vignette: { value: .32 }, night: { value: 0 }, sat: { value: 1.08 } },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float time, vignette, night; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float time, vignette, night, sat; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(.299, .587, .114));
-      c.rgb = mix(vec3(l), c.rgb, 1.08);
+      c.rgb = mix(vec3(l), c.rgb, sat);
       vec2 q = vUv - .5;
       float v = 1. - dot(q, q) * vignette * 2.2;
       c.rgb *= mix(vec3(1.), vec3(1., .96, .9), .35) * v;

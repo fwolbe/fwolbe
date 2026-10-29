@@ -121,15 +121,16 @@ const ROOF_GLSL = /* glsl */`
   float rows = fract(vW.y / .32);
   float rpx = fwidth(vW.y / .32);
   float line = smoothstep(.0, max(rpx * 1.5, .08), rows) * smoothstep(0., max(rpx * 1.5, .08), 1. - rows);
-  diffuseColor.rgb *= mix(1., .82 + .18 * line, step(.15, abs(vWN.y)) * step(abs(vWN.y), .97) * clamp(1. - rpx, 0., 1.));
+  diffuseColor.rgb *= mix(1., .82 + .18 * line, step(.15, abs(vWN.y)) * step(abs(vWN.y), .97) * clamp(1. - rpx, 0., 1.) * step(uStyle, .5));
 `;
 
-export function buildBuildings(data, surf, rnd) {
+export function buildBuildings(data, surf, inside = () => true) {
   const walls = { pos: [], nor: [], wall: [], col: [] };
   const roofGeoms = [], trimGeoms = [], edgeGeoms = [];
   const info = [];
   const c = new THREE.Color();
   for (const b of data.buildings) {
+    if (!rectPts(b, .4).every(p => inside(p[0], p[1]))) continue;
     const pitched = b.roof !== 'flat' && b.rect > 0.76;
     const pts = pitched ? rectPts(b) : b.fp.slice(0, b.fp.length - 1);
     if (pts.length < 3) continue;

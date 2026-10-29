@@ -32,6 +32,8 @@ npm install && node scripts/build.mjs    # -> dist/index.html (standalone), dist
 
 `config.json`, the raw downloads and the built data stay out of git because they pin a home location.
 
+Styles: cardboard, architect's white model and needle felt (◧ Model menu, or `?style=white|felt`). The plate can be cropped around home from 80 m to the full 520 m, square or round (`?crop=120&shape=round`, crop is the half-size in metres).
+
 URL options on the standalone page: `?t=16:30` fixes the time, `?weather=snow|rain|fog|clear|partly|cloudy|storm`, `?view=home|street|top|overview`, `?step=3` (contour layer in metres, `0` = smooth), `?exag=1.5`, `?tilt=0`.
 
 ## Next

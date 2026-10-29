@@ -65,7 +65,7 @@ export function buildWeather(half, topY) {
     m.castShadow = true;
     m.position.set((rand() - .5) * half * 1.8, topY + 45 + rand() * 40, (rand() - .5) * half * 1.8);
     m.rotation.y = rand() * Math.PI;
-    m.scale.setScalar(.9 + rand() * .9);
+    m.scale.setScalar((.9 + rand() * .9) * Math.max(.3, Math.min(1, half / 220)));
     m.userData = { k: i / 16, bob: rand() * 6 };
     clouds.push(m); group.add(m);
   }
@@ -103,10 +103,11 @@ export function buildWeather(half, topY) {
       if (c.position.x > lim) c.position.x -= lim * 2; if (c.position.x < -lim) c.position.x += lim * 2;
       if (c.position.z > lim) c.position.z -= lim * 2; if (c.position.z < -lim) c.position.z += lim * 2;
       c.rotation.y = Math.atan2(wx, wz) + Math.PI / 2 + Math.sin(i) * .4;
-      c.position.y = topY + 45 + c.userData.bob * 6 + Math.sin(t * .3 + i) * 1.2;
+      c.position.y = topY + Math.min(45, 12 + half * .15) + c.userData.bob * Math.min(6, half / 30) + Math.sin(t * .3 + i) * 1.2;
       c.material.color.set(w.rain > .3 ? '#c9c6c0' : '#f4efe4');
     });
-    const nr = Math.floor(N * w.rain);
+    const area = Math.max(.12, Math.min(1, (half / 260) ** 2));
+    const nr = Math.floor(N * w.rain * area);
     rain.visible = nr > 0;
     if (rain.visible) {
       rain.geometry.setDrawRange(0, nr * 2);
@@ -124,7 +125,7 @@ export function buildWeather(half, topY) {
       }
       rain.geometry.attributes.position.needsUpdate = true;
     }
-    const ns = Math.floor(N * w.snow);
+    const ns = Math.floor(N * w.snow * area);
     snow.visible = ns > 0;
     if (snow.visible) {
       snow.geometry.setDrawRange(0, ns);

@@ -54,6 +54,7 @@
   input[type=range] { flex: 1; min-width: 120px; accent-color: var(--yellow); height: 24px; }
   .lab { font: 700 10px Inter; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
   .grow { flex: 1; }
+  .val { font: 600 12px Inter; color: var(--cream); min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
   #sunlbl { font: 600 11px Inter; color: var(--muted); font-variant-numeric: tabular-nums; }
   .row.first { flex-wrap: nowrap; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #2a2420; transition: opacity .6s; z-index: 10; font: 400 22px 'Russo One'; color: var(--yellow); font-style: italic; }
@@ -62,6 +63,7 @@
     #badge .t, #badge .clock { font-size: 22px; }
     #badge { padding: 6px 12px 6px 10px; }
     .hide-s { display: none; }
+    #time { min-width: 70px; }
     #dock { padding: 8px; }
     button { padding: 6px 8px; }
   }
@@ -83,6 +85,7 @@
     <button id="lapse" title="Time-lapse: one hour every six seconds">▶<span class="hide-s"> Time-lapse</span></button>
     <button class="menu-btn" data-menu="m-light" title="Light">☀<span class="hide-s"> Light</span></button>
     <button class="menu-btn" data-menu="m-wx" title="Weather">☁<span class="hide-s"> Weather</span></button>
+    <button class="menu-btn" data-menu="m-model" title="Style and plate">◧<span class="hide-s"> Model</span></button>
     <button class="menu-btn" data-menu="m-set" id="gear" title="Settings">⚙</button>
   </div>
   <div class="menu" id="m-light">
@@ -92,6 +95,11 @@
   <div class="menu" id="m-wx">
     <div class="row"><span class="lab">Weather</span></div>
     <div class="row"><button data-wx="live">Live</button><button data-wx="clear">Clear</button><button data-wx="partly">Clouds</button><button data-wx="cloudy">Overcast</button><button data-wx="rain">Rain</button><button data-wx="snow">Snow</button><button data-wx="fog">Fog</button><button data-wx="storm">Storm</button></div>
+  </div>
+  <div class="menu" id="m-model">
+    <div class="row"><span class="lab">Style</span><button data-style="cardboard">Cardboard</button><button data-style="white">Architect's white</button><button data-style="felt">Needle felt</button></div>
+    <div class="row"><span class="lab">Plate</span><button data-shape="square">Square</button><button data-shape="round">Round</button></div>
+    <div class="row"><span class="lab">Size</span><input id="crop" type="range" min="40" max="260" step="10" aria-label="Plate size"><span id="crop-out" class="val">520 m</span></div>
   </div>
   <div class="menu" id="m-set">
     <div class="row"><span class="lab">View</span><button data-view="overview">Whole diorama</button><button data-view="home">Home</button><button data-view="street">Street level</button><button data-view="top">Map</button></div>

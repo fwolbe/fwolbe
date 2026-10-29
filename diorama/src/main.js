@@ -7,8 +7,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import DATA from './data.json';
-import { makeField, surface, buildTerrain, buildSmoothSides } from './terrain.js';
-import { cardboard, U, WALL_GLSL } from './materials.js';
+import { makeField, surface, buildTerrain } from './terrain.js';
+import { cardboard, U, WALL_GLSL, STYLES } from './materials.js';
+import { makePlate } from './plate.js';
 import { paintGround } from './ground.js';
 import { buildBuildings } from './buildings.js';
 import { buildTrees, buildHedges } from './trees.js';
@@ -30,7 +31,10 @@ const state = {
   weatherMode: params.get('weather') || 'live', live_w: null, weather: { ...PRESETS.partly },
   step: Number(params.get('step') ?? 3), exag: Number(params.get('exag') ?? 1.5),
   tilt: params.get('tilt') !== '0', labels: true, autoRotate: false,
+  style: STYLES[params.get('style')] != null ? params.get('style') : 'cardboard',
+  crop: Number(params.get('crop') || DATA.half), shape: params.get('shape') === 'round' ? 'round' : 'square',
 };
+let plate = makePlate(state.shape, state.crop);
 if (params.get('date')) state.time = new Date(params.get('date') + 'T12:00:00Z');
 if (params.get('t')) { const [h, m] = params.get('t').split(':').map(Number); state.live = false; state.time = atLocal(state.time, h, m || 0); }
 
@@ -68,7 +72,7 @@ scene.add(hemi, sun, sun.target, moon);
 
 // ------------------------------------------------------------------ table
 const tableMat = cardboard(new THREE.MeshStandardMaterial({ color: '#5b4c3f', roughness: 1 }), {
-  key: 'table', colorBody: `diffuseColor.rgb *= .85 + .15 * vnoise(vW.xz * .02) + .05 * vnoise(vW.xz * .4);`,
+  key: 'table', cat: 'SELF', colorBody: `diffuseColor.rgb *= .85 + .15 * vnoise(vW.xz * .02) + .05 * vnoise(vW.xz * .4);`,
 });
 const table = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000).rotateX(-Math.PI / 2), tableMat);
 table.position.y = -BASE - .02;
@@ -78,21 +82,42 @@ scene.add(table);
 // ------------------------------------------------------------------ the diorama (rebuilt when terrain settings change)
 const groundTex = paintGround(DATA, MOBILE ? 2048 : 4096);
 const terrainMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }), {
-  key: 'terrain', top: () => field.max,
+  key: 'terrain', cat: 'SELF',
   uniforms: { uGround: { value: groundTex }, uHalf: { value: HALF }, uTop: { value: 100 } },
   fragmentHead: `uniform sampler2D uGround; uniform float uHalf, uTop; ${WALL_GLSL}`,
   colorBody: `
+    vec3 tex = texture2D(uGround, (vW.xz + uHalf) / (2. * uHalf)).rgb;
+    bool water = tex.b > tex.r + .12 && tex.b > tex.g;
+    float lv = floor(vW.y / uStep + .02);
     if (vWN.y > .5) {
-      diffuseColor.rgb = texture2D(uGround, (vW.xz + uHalf) / (2. * uHalf)).rgb;
-      float lv = floor(vW.y / uStep + .02);
-      // each sheet a slightly different board; higher sheets lighter and warmer
       float hgt = clamp(vW.y / uTop, 0., 1.);
-      diffuseColor.rgb *= (.92 + .08 * fract(lv * .618)) * (.74 + .4 * hgt);
-      diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.06, 1.02, .9), hgt * .6);
+      if (uStyle < .5) {
+        // each sheet a slightly different board; higher sheets lighter and warmer
+        diffuseColor.rgb = tex * (.92 + .08 * fract(lv * .618)) * (.74 + .4 * hgt);
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.06, 1.02, .9), hgt * .6);
+      } else if (uStyle < 1.5) {
+        diffuseColor.rgb = water ? vec3(.78, .85, .9) : vec3(.95, .935, .905) * (.95 + .06 * fract(lv * .618));
+      } else {
+        float l = dot(tex, vec3(.299, .587, .114));
+        vec3 f = mix(mix(vec3(l), tex, 1.12), vec3(l) * 1.02 + .05, .16);
+        diffuseColor.rgb = f * (.74 + .42 * feltFibre(vW, vWN)) * (.88 + .1 * fract(lv * .618) + .1 * hgt);
+      }
     } else if (vWN.y < -.5) {
       diffuseColor.rgb = vec3(.42, .32, .22);
-    } else {
+    } else if (uStyle < .5) {
       diffuseColor.rgb = kraft(vW, vWN, uStep);
+    } else if (uStyle < 1.5) {
+      float lay = fract(vW.y / uStep), px = fwidth(vW.y / uStep);
+      float seam = 1. - smoothstep(0., max(px * 1.5, .04), lay) * smoothstep(0., max(px * 1.5, .04), 1. - lay);
+      diffuseColor.rgb = mix(vec3(.9, .88, .84), vec3(.6, .58, .55), seam * .7);
+    } else {
+      // a sheet of moss felt per layer, blanket-stitched along its top edge
+      float lay = fract(vW.y / uStep);
+      float h = abs(vWN.x) > abs(vWN.z) ? vW.z : vW.x;
+      float spx = fwidth(h / .9);
+      float stitch = step(.86, lay) * step(lay, .93) * step(fract(h / .9), .55) * clamp(1. - spx * 2., 0., 1.);
+      vec3 felt = vec3(.40, .47, .30) * (.74 + .42 * feltFibre(vW, vWN)) * (.85 + .15 * fract(floor(vW.y / uStep) * .618));
+      diffuseColor.rgb = mix(felt, vec3(.93, .88, .74), stitch);
     }`,
 });
 
@@ -104,23 +129,50 @@ function build() {
   surf = surface(field, state.step);
   U.uStep.value = state.step > 0 ? state.step : 2;
   terrainMat.userData.top = field.max;
-  const tg = buildTerrain(field, state.step, BASE);
+  plate = makePlate(state.shape, state.crop);
+  const tg = buildTerrain(field, state.step, BASE, plate);
   const terrain = new THREE.Mesh(tg, terrainMat);
   terrain.receiveShadow = true; terrain.castShadow = true;
   world.add(terrain);
-  if (state.step <= 0) { const sides = new THREE.Mesh(buildSmoothSides(field, BASE), terrainMat); sides.receiveShadow = true; world.add(sides); }
-  const roads = buildRoads(DATA, field, surf); roadMat = roads.roadMat; world.add(roads.group);
-  const bld = buildBuildings(DATA, surf); world.add(bld.group);
-  world.add(buildTrees(DATA, surf, state.time).group);
-  world.add(buildHedges(DATA, surf, state.time));
-  lamps = buildLamps(DATA, field); world.add(lamps.group);
+  const roads = buildRoads(DATA, field, surf, plate); roadMat = roads.roadMat; world.add(roads.group);
+  const bld = buildBuildings(DATA, surf, plate.inside); world.add(bld.group);
+  buildingLines = bld.lines;
+  world.add(buildTrees(DATA, surf, state.time, state.style, plate.inside).group);
+  world.add(buildHedges(DATA, surf, state.time, plate.inside));
+  lamps = buildLamps(DATA, field, plate); world.add(lamps.group);
   graph = roadGraph(DATA);
-  traffic = buildTraffic(graph, field, HALF); world.add(traffic.group);
+  traffic = buildTraffic(graph, field, plate); world.add(traffic.group);
   home = homeMarker(bld.info); world.add(home.obj);
   world.add(nameplate());
   scene.add(world);
   labels.place(bld.info);
+  // relief inside this plate, and the height band the tint and camera use
+  let lo = Infinity, hi = -Infinity;
+  for (let x = -plate.r; x <= plate.r; x += 4) for (let z = -plate.r; z <= plate.r; z += 4) {
+    if (!plate.inside(x, z)) continue; const y = field.sample(x, z); lo = Math.min(lo, y); hi = Math.max(hi, y);
+  }
+  plate.lo = lo; plate.hi = hi;
+  if (weatherFx) { scene.remove(weatherFx.group); }
+  weatherFx = buildWeather(plate.r, hi); scene.add(weatherFx.group);
+  applyStyle();
 }
+
+// Per-style table, outlines and grade
+let buildingLines = null;
+const STYLE_LOOK = {
+  cardboard: { table: '#5b4c3f', lines: .45, sat: 1.08, exposure: 1 },
+  white: { table: '#3b2e25', lines: .28, sat: .92, exposure: .86 },
+  felt: { table: '#4d5a55', lines: 0, sat: 1.12, exposure: 1.02 },
+};
+function applyStyle() {
+  const look = STYLE_LOOK[state.style];
+  U.uStyle.value = STYLES[state.style];
+  tableMat.color.set(look.table);
+  if (buildingLines) { buildingLines.visible = look.lines > 0; buildingLines.material.opacity = look.lines; buildingLines.material.color.set(state.style === 'white' ? '#6b6560' : '#3a2617'); }
+  finish.uniforms.sat.value = look.sat;
+  styleExposure = look.exposure;
+}
+let styleExposure = 1;
 
 // A cardboard map pin over home.
 function homeMarker(info) {
@@ -130,13 +182,17 @@ function homeMarker(info) {
   s.moveTo(0, 0); s.bezierCurveTo(-1.2, 2.2, -3.2, 3.6, -3.2, 5.6); s.absarc(0, 5.6, 3.2, Math.PI, 0, true); s.bezierCurveTo(3.2, 3.6, 1.2, 2.2, 0, 0);
   const hole = new THREE.Path(); hole.absarc(0, 5.6, 1.3, 0, Math.PI * 2, false); s.holes.push(hole);
   const g = new THREE.ExtrudeGeometry(s, { depth: .7, bevelEnabled: false, curveSegments: 18 }); g.translate(0, 0, -.35);
-  const pin = new THREE.Mesh(g, cardboard(new THREE.MeshStandardMaterial({ color: '#f2c230', roughness: .8, emissive: '#f2c230', emissiveIntensity: 0 }), { key: 'pin', fragmentHead: WALL_GLSL, colorBody: `if (abs(vWN.y) < .9 && abs(dot(vWN, normalize(vec3(1.,0.,1.)))) < 2.) {}` }));
+  const pin = new THREE.Mesh(g, cardboard(new THREE.MeshStandardMaterial({ color: '#f2c230', roughness: .8, emissive: '#f2c230', emissiveIntensity: 0 }), { key: 'pin', cat: 'KEEP' }));
   pin.castShadow = true;
   const obj = new THREE.Group(); obj.add(pin);
   const x = best ? best.b.obb.cx : 0, z = best ? best.b.obb.cz : 0, y = best ? best.top + 3 : surf(0, 0) + 10;
   obj.position.set(x, y, z);
   return { obj, pin, base: y, x, z };
 }
+
+// true (unexaggerated) height above the lowest point
+const RAW = makeField(DATA.terrain, 1);
+const DATA_RELIEF = (x, z) => RAW.sample(x, z);
 
 // A brass-and-card nameplate on the south face of the slab.
 function nameplate() {
@@ -147,13 +203,17 @@ function nameplate() {
   g.fillStyle = '#f2c230'; g.font = 'italic 900 74px "Russo One", "Arial Black", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText('BYMARKEN · JÖNKÖPING', 512, 72);
   g.font = '600 26px system-ui, sans-serif'; g.fillStyle = '#e9dcc0';
-  g.fillText(`${LAT.toFixed(4)}° N   ${LON.toFixed(4)}° E   ·   ${Math.round(DATA.terrain.max - DATA.terrain.min)} m relief`, 512, 124);
+  let lo = Infinity, hi = -Infinity;
+  for (let x = -plate.r; x <= plate.r; x += 4) for (let z = -plate.r; z <= plate.r; z += 4) if (plate.inside(x, z)) { const v = DATA_RELIEF(x, z); lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  g.fillText(`${LAT.toFixed(4)}° N   ${LON.toFixed(4)}° E   ·   ${Math.round(hi - lo)} m relief`, 512, 124);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(120, 18.75), new THREE.MeshStandardMaterial({ map: t, roughness: .6 }));
   const yb = -BASE;
-  let y = Infinity; for (let x = -60; x <= 60; x += 2) y = Math.min(y, surf(x, HALF - .01));
-  m.position.set(0, Math.max(yb + 9.6, Math.min(y - 1.5, yb + 9.6)), HALF + .15);
-  m.scale.setScalar(Math.min(1, (y - yb) / 20 + .3));
+  const w = Math.min(120, plate.r * 1.1), half = w / 2, zf = plate.r - .01;
+  let y = Infinity; for (let x = -half; x <= half; x += 2) y = Math.min(y, surf(x, plate.round ? Math.sqrt(Math.max(0, zf * zf - x * x)) : zf));
+  const sc = Math.min(w / 120, (y - yb) / 22);
+  m.scale.setScalar(Math.max(.15, sc));
+  m.position.set(0, yb + 18.75 * m.scale.y / 2 + .6, plate.r + .15);
   return m;
 }
 
@@ -166,7 +226,7 @@ const labels = (() => {
     const add = (text, cls, pos) => { const d = document.createElement('div'); d.className = 'lbl ' + cls; d.textContent = text; el.appendChild(d); items.push({ d, pos }); };
     for (const p of DATA.pois) {
       if (p.k === 'home') continue;
-      if (p.k === 'place') {
+      if (p.k === 'place' && plate.inside(p.x, p.z, 4)) {
         const b = info.find(i => i.b.kind === 'church');
         const pos = p.name === 'Bymarkskyrkan' && b ? new THREE.Vector3(b.b.obb.cx, b.top + 4, b.b.obb.cz) : new THREE.Vector3(p.x, surf(p.x, p.z) + 6, p.z);
         add(p.name, 'poi', pos);
@@ -183,7 +243,7 @@ const labels = (() => {
     for (const [name, { r, len }] of best) {
       if (len < 60) continue;
       const mid = r.p[Math.floor(r.p.length / 2)];
-      if (Math.abs(mid[0]) > HALF - 15 || Math.abs(mid[1]) > HALF - 15) continue;
+      if (!plate.inside(mid[0], mid[1], 15)) continue;
       add(name, 'street', new THREE.Vector3(mid[0], ry(mid[0], mid[1]) + 1.5, mid[1]));
     }
     add('Hem', 'home', new THREE.Vector3(home.x, home.base + 9, home.z));
@@ -208,7 +268,6 @@ const labels = (() => {
 
 // ------------------------------------------------------------------ weather + post
 let weatherFx = null;
-function initWeather() { weatherFx = buildWeather(HALF, field.max); scene.add(weatherFx.group); }
 
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { samples: 4, type: THREE.HalfFloatType }));
 composer.setPixelRatio(renderer.getPixelRatio());
@@ -265,7 +324,7 @@ function applyLight(dt) {
   sun.position.copy(d).multiplyScalar(700); sun.target.position.set(0, 0, 0);
   sun.color.copy(L.sun);
   sun.intensity = L.sunI * (1 - overcast * .78) * (1 - cur.fog * .5);
-  sun.shadow.radius = 2 + overcast * 10;
+  sun.shadow.radius = 2 + overcast * 10 + (state.style === 'felt' ? 5 : 0);
   hemi.color.copy(L.sky).lerp(new THREE.Color('#b9bcc2'), overcast * .5);
   hemi.groundColor.copy(L.ground);
   hemi.intensity = L.hemiI * (1 + overcast * .35) * (1 + THREE.MathUtils.smoothstep(altDeg, -3, 2) * (1 - THREE.MathUtils.smoothstep(altDeg, 6, 16)) * .5);
@@ -284,7 +343,7 @@ function applyLight(dt) {
   bloom.strength = .15 + L.night * .85;
   bloom.threshold = .82 - L.night * .2;
   const golden = THREE.MathUtils.smoothstep(altDeg, -3, 2) * (1 - THREE.MathUtils.smoothstep(altDeg, 6, 16));
-  renderer.toneMappingExposure = 1.0 + L.night * .25 + golden * .45;
+  renderer.toneMappingExposure = (1.0 + L.night * .25 + golden * .45) * styleExposure;
   if (lamps) { lamps.headMat.emissiveIntensity = L.night * 3.2; lamps.poolMat.opacity = L.night * .42; }
   if (roadMat) roadMat.roughness = .9 - cur.rain * .55;
   finish.uniforms.night.value = L.night;
@@ -293,12 +352,11 @@ function applyLight(dt) {
 
 // ------------------------------------------------------------------ boot
 build();
-initWeather();
 resize();
 
 const ui = setupUI({
   state, events: () => events,
-  onTerrain() { build(); },
+  onTerrain(kind) { build(); if (kind === 'plate') flyTo('overview'); },
   onTime() { events = sunEvents(state.time, LAT, LON); },
   onView(kind) { flyTo(kind); },
 });
@@ -321,9 +379,14 @@ const views = {
 function sph(v) { return new THREE.Vector3(Math.sin(v.pol) * Math.sin(v.az), Math.cos(v.pol), Math.sin(v.pol) * Math.cos(v.az)).multiplyScalar(v.dist); }
 let fly = null;
 function flyTo(kind) {
-  const v = views[kind]; if (!v) return;
+  let v = views[kind]; if (!v) return;
+  const k = plate.r / 260, mid = (plate.lo + plate.hi) / 2;
+  if (kind === 'overview') v = { ...v, dist: Math.max(150, v.dist * k) };
+  if (kind === 'top') v = { ...v, dist: Math.max(170, v.dist * k) };
+  if (kind === 'home') v = { ...v, dist: Math.min(v.dist, plate.r * 1.5 + 70) };
   const tgt = kind === 'home' || kind === 'street' ? new THREE.Vector3(home.x, surf(home.x, home.z), home.z)
-    : kind === 'overview' ? new THREE.Vector3(10, field.max * .3, 70) : new THREE.Vector3(0, field.max * .4, 0);
+    : kind === 'overview' ? new THREE.Vector3(10 * k, mid * .75, 70 * k) : new THREE.Vector3(0, mid, 0);
+  controls.maxDistance = Math.max(450, plate.r * 5);
   fly = { t: 0, dur: 1.8, p0: camera.position.clone(), t0: controls.target.clone(), p1: tgt.clone().add(sph(v)), t1: tgt };
 }
 camera.position.copy(look).add(sph({ az: .2, pol: .35, dist: 1500 }));
@@ -341,7 +404,7 @@ function frame() {
   U.uTime.value = t;
   const { altDeg } = applyLight(dt);
   const w = currentWeather();
-  weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (Math.abs(x) < HALF && Math.abs(z) < HALF ? surf(x, z) : -BASE));
+  weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (plate.inside(x, z) ? surf(x, z) : -BASE));
   traffic.update(state.lapse ? dt * 4 : dt, trafficDensity(state.time), U.uNight.value);
   home.obj.position.y = home.base + Math.sin(t * 1.6) * .8;
   home.pin.rotation.y = t * .8;
@@ -355,11 +418,11 @@ function frame() {
   }
   controls.autoRotate = state.autoRotate;
   controls.update();
-  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -HALF, HALF);
-  controls.target.z = THREE.MathUtils.clamp(controls.target.z, -HALF, HALF);
+  controls.target.x = THREE.MathUtils.clamp(controls.target.x, -plate.r, plate.r);
+  controls.target.z = THREE.MathUtils.clamp(controls.target.z, -plate.r, plate.r);
   // shadow frustum follows what's in view
   const dist = camera.position.distanceTo(controls.target);
-  const ext = THREE.MathUtils.clamp(dist * .9, 120, 400);
+  const ext = THREE.MathUtils.clamp(dist * .9, 60, Math.min(400, plate.r * 1.5 + 20));
   const tgt = dist < 500 ? controls.target : new THREE.Vector3();
   sun.target.position.copy(tgt); sun.position.add(tgt);
   if (sc.right !== ext) { sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext; sc.updateProjectionMatrix(); }

@@ -22,12 +22,12 @@ function carGeometry() {
   return { tint, fixed };
 }
 
-export function buildTraffic(graph, field, half) {
+export function buildTraffic(graph, field, plate) {
   const ry = roadHeight(field);
   const MAX = 26;
   const geo = carGeometry();
   const tintMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .6 }), { key: 'car' });
-  const fixMat = cardboard(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .7 }), { key: 'carfix' });
+  const fixMat = cardboard(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .7 }), { key: 'carfix', cat: 'DARK' });
   const bodies = new THREE.InstancedMesh(geo.tint, tintMat, MAX);
   const fixed = new THREE.InstancedMesh(geo.fixed, fixMat, MAX);
   bodies.castShadow = fixed.castShadow = true;
@@ -43,8 +43,14 @@ export function buildTraffic(graph, field, half) {
   beams.renderOrder = 3;
   const group = new THREE.Group(); group.add(bodies, fixed, heads, tails, beams);
 
-  const edges = graph.edges;
-  const borderNodes = graph.nodes.filter(n => Math.abs(n.x) > half - 8 || Math.abs(n.z) > half - 8);
+  // only the streets that cross the plate carry traffic; cars enter from beyond its edge
+  const all = graph.edges;
+  const edges = all.filter(e => e.pts.some(p => plate.inside(p[0], p[1])));
+  const away = (n) => !plate.inside(n.x, n.z, -10);
+  const entries = [];
+  for (const e of edges) { if (away(e.a)) entries.push({ e, dir: 1 }); if (away(e.b)) entries.push({ e, dir: -1 }); }
+  const lenAll = all.reduce((s, e) => s + e.len, 0), lenHere = edges.reduce((s, e) => s + e.len, 0);
+  const share = Math.min(1, lenHere / lenAll * 1.4 + .05);
   const cars = [];
   let seed = 1;
   const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -52,9 +58,9 @@ export function buildTraffic(graph, field, half) {
 
   function spawn(car, anywhere) {
     let e, dir, s;
-    if (!anywhere && borderNodes.length) {
-      const n = borderNodes[Math.floor(rand() * borderNodes.length)];
-      const o = n.out[Math.floor(rand() * n.out.length)];
+    if (!edges.length) { car.active = false; return; }
+    if (!anywhere && entries.length) {
+      const o = entries[Math.floor(rand() * entries.length)];
       e = o.e; dir = o.dir; s = 0;
     } else {
       e = edges[Math.floor(rand() * edges.length)]; dir = rand() < .5 ? 1 : -1; s = rand() * e.len;
@@ -88,7 +94,7 @@ export function buildTraffic(graph, field, half) {
   let target = 10;
 
   function update(dt, density, night) {
-    target = Math.round(MAX * density);
+    target = Math.round(MAX * density * share);
     let active = cars.filter(c => c.active).length;
     for (const c of cars) {
       if (!c.active && active < target) { spawn(c, active < target * .6 && update.first); active++; }
@@ -107,9 +113,9 @@ export function buildTraffic(graph, field, half) {
       c.s += c.v * dt;
       if (c.s >= c.e.len) {
         const end = c.dir === 1 ? c.e.b : c.e.a;
-        const opts = end.out.filter(o => o.e !== c.e);
+        const opts = end.out.filter(o => o.e !== c.e && edges.includes(o.e));
+        if (away(end)) { c.active = false; active--; continue; }
         if (!opts.length) {
-          if (Math.abs(end.x) > half - 8 || Math.abs(end.z) > half - 8) { c.active = false; if (active > target) active--; continue; }
           c.dir = -c.dir; c.s = 0; // turn around in a dead end
         } else {
           const o = opts[Math.floor(rand() * opts.length)];
@@ -124,7 +130,7 @@ export function buildTraffic(graph, field, half) {
       let dx = p1[0] - p0[0], dz = p1[1] - p0[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
       const lane = c.e.k === 'service' ? .2 : 1.45;
       const x = p0[0] - dz * lane, z = p0[1] + dx * lane;
-      if (Math.abs(x) > half - 2.5 || Math.abs(z) > half - 2.5) {
+      if (!plate.inside(x, z, 2.5)) {
         // off the edge of the board: keep driving, but out of sight
         for (const im of [bodies, fixed, beams]) im.setMatrixAt(c.i, hide);
         for (const k of [0, 1]) { heads.setMatrixAt(c.i * 2 + k, hide); tails.setMatrixAt(c.i * 2 + k, hide); }
