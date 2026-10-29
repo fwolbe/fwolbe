@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bymarken Diorama</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: dark;
+    --ink: #1d1916; --card: #c9a77a; --card-hi: #dcc199; --card-lo: #9b7a52; --yellow: #f2c230; --cream: #f4efe4;
+    --panel: rgba(29, 25, 22, .92); --muted: #b9ab95;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --panel: rgba(22, 19, 17, .94); } }
+  :root[data-theme="dark"] { --panel: rgba(22, 19, 17, .94); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2420; color: var(--cream); font: 500 14px/1.3 Inter, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+  #stage, #stage canvas { position: fixed; inset: 0; display: block; touch-action: none; }
+  #labels { position: fixed; inset: 0; pointer-events: none; }
+  .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; transition: opacity .3s; will-change: transform; }
+  .lbl.street { font: 700 11px Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fffaf0; text-shadow: 0 1px 2px #000a, 0 0 6px #0008; }
+  .lbl.poi { font: 600 12px Inter, sans-serif; background: var(--cream); color: var(--ink); padding: 3px 8px 4px; border: 2px solid var(--ink); border-radius: 3px; box-shadow: 2px 2px 0 #0006; }
+  .lbl.home { font: 400 14px 'Russo One', sans-serif; background: var(--yellow); color: var(--ink); padding: 3px 10px 4px; border: 2px solid var(--ink); border-radius: 3px; box-shadow: 2px 2px 0 #0007; letter-spacing: .05em; }
+
+  /* HUD badge in the Cardboard Racer style */
+  #badge { position: fixed; left: max(14px, env(safe-area-inset-left)); top: max(14px, env(safe-area-inset-top)); display: flex; align-items: stretch; gap: 0;
+    background: var(--panel); border: 2px solid var(--yellow); clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+    padding: 8px 18px 8px 14px; box-shadow: 0 6px 18px #0006; max-width: calc(100vw - 28px); }
+  #badge .t { font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--yellow); letter-spacing: .02em; }
+  #badge .s { font: 600 11px/1.2 Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  #badge .sep { width: 2px; background: #f2c23055; margin: 2px 14px; }
+  #badge .clock { font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--cream); font-variant-numeric: tabular-nums; }
+  #badge .wx { font: 600 12px Inter, sans-serif; color: var(--cream); margin-top: 4px; white-space: nowrap; }
+
+  #compass { position: fixed; right: max(14px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); width: 46px; height: 46px; border-radius: 50%;
+    background: var(--panel); border: 2px solid var(--yellow); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px #0006; }
+  #compass i { display: block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 16px solid var(--yellow); transform-origin: 50% 100%; position: relative; top: -8px; }
+  #compass b { position: absolute; font: 400 10px 'Russo One'; color: var(--cream); bottom: 4px; }
+
+  /* control dock: a strip of card */
+  #dock { position: fixed; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(680px, calc(100vw - 20px));
+    background: var(--panel); border: 2px solid #f2c23099; border-radius: 6px; padding: 8px 10px; box-shadow: 0 10px 30px #0008; }
+  .menu { display: none; position: absolute; left: -2px; right: -2px; bottom: calc(100% + 8px); background: var(--panel); border: 2px solid #f2c23099; border-radius: 6px; padding: 10px; box-shadow: 0 10px 30px #0008; }
+  .menu.open { display: block; }
+  .menu-btn.on { background: #f2c23033; color: var(--yellow); border-color: var(--yellow); }
+  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .row + .row { margin-top: 8px; }
+  button { font: 600 12px Inter, sans-serif; color: var(--cream); background: #ffffff10; border: 1.5px solid #ffffff2a; border-radius: 4px; padding: 6px 10px; cursor: pointer; white-space: nowrap; }
+  button:hover { background: #ffffff1c; }
+  button.on { background: var(--yellow); color: var(--ink); border-color: var(--yellow); }
+  #live.on::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #d23a2a; margin-right: 6px; vertical-align: 1px; animation: blink 1.4s infinite; }
+  @keyframes blink { 50% { opacity: .25; } }
+  input[type=range] { flex: 1; min-width: 120px; accent-color: var(--yellow); height: 24px; }
+  .lab { font: 700 10px Inter; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
+  .grow { flex: 1; }
+  #sunlbl { font: 600 11px Inter; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row.first { flex-wrap: nowrap; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #2a2420; transition: opacity .6s; z-index: 10; font: 400 22px 'Russo One'; color: var(--yellow); font-style: italic; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  @media (max-width: 640px) {
+    #badge .t, #badge .clock { font-size: 22px; }
+    #badge { padding: 6px 12px 6px 10px; }
+    .hide-s { display: none; }
+    #dock { padding: 8px; }
+    button { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="labels"></div>
+<div id="badge">
+  <div><div class="t">BYMARKEN</div><div class="s">Jönköping · diorama</div></div>
+  <div class="sep"></div>
+  <div><div class="clock" id="clock">--:--</div><div class="wx" id="wx">…</div></div>
+</div>
+<div id="compass" title="Point north"><i></i><b>N</b></div>
+<div id="dock">
+  <div class="row first">
+    <button id="live" class="on">LIVE</button>
+    <input id="time" type="range" min="0" max="1439" step="1" aria-label="Time of day">
+    <button id="lapse" title="Time-lapse: one hour every six seconds">▶<span class="hide-s"> Time-lapse</span></button>
+    <button class="menu-btn" data-menu="m-light" title="Light">☀<span class="hide-s"> Light</span></button>
+    <button class="menu-btn" data-menu="m-wx" title="Weather">☁<span class="hide-s"> Weather</span></button>
+    <button class="menu-btn" data-menu="m-set" id="gear" title="Settings">⚙</button>
+  </div>
+  <div class="menu" id="m-light">
+    <div class="row"><span class="lab">Jump to</span><span class="grow"></span><span id="sunlbl"></span></div>
+    <div class="row"><button data-at="sunrise">Sunrise</button><button data-at="golden">Golden hour</button><button data-at="noon">Noon</button><button data-at="dusk">Dusk</button><button data-at="night">Night</button></div>
+  </div>
+  <div class="menu" id="m-wx">
+    <div class="row"><span class="lab">Weather</span></div>
+    <div class="row"><button data-wx="live">Live</button><button data-wx="clear">Clear</button><button data-wx="partly">Clouds</button><button data-wx="cloudy">Overcast</button><button data-wx="rain">Rain</button><button data-wx="snow">Snow</button><button data-wx="fog">Fog</button><button data-wx="storm">Storm</button></div>
+  </div>
+  <div class="menu" id="m-set">
+    <div class="row"><span class="lab">View</span><button data-view="overview">Whole diorama</button><button data-view="home">Home</button><button data-view="street">Street level</button><button data-view="top">Map</button></div>
+    <div class="row"><span class="lab">Layers</span><button data-step="1.5">1.5 m</button><button data-step="3">3 m</button><button data-step="5">5 m</button><button data-step="0">Smooth</button></div>
+    <div class="row"><span class="lab">Height</span><button data-exag="1">×1 (true)</button><button data-exag="1.5">×1.5</button><button data-exag="2">×2</button></div>
+    <div class="row"><span class="lab">Tilt-shift</span><button data-tilt="1">On</button><button data-tilt="0">Off</button>
+      <span class="lab" style="margin-left:8px">Labels</span><button data-labels="1">On</button><button data-labels="0">Off</button>
+      <span class="lab" style="margin-left:8px">Spin</span><button data-spin="1">On</button><button data-spin="0">Off</button></div>
+  </div>
+</div>
+<div id="loading">Cutting cardboard…</div>
+<script>/*APP*/</script>
+</body>
+</html>
