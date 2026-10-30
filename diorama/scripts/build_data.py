@@ -167,7 +167,7 @@ OVERRIDES = {
          ],
          # the garden as photographed: clear the random filler, keep it mostly lawn, add the
          # row of columnar conifers and the red Japanese maples by the front door
-         "garden": {"clear": 16, "plant": [
+         "garden": {"clear": 16, "drop": [[14.3, 10.6]], "plant": [
              [-8.0, -6.6, 2.6, .55, "thuja"], [-8.0, -5.5, 2.8, .55, "thuja"], [-8.0, -4.4, 2.6, .55, "thuja"], [-8.0, -3.3, 2.7, .55, "thuja"],
              [-8.6, -1.4, 1.9, 1.5, "maple"], [-7.6, 2.6, 1.7, 1.3, "maple"],
              [-12.5, -9.5, 7.5, 2.2, "spruce"], [12.5, 8.5, 6.5, 3.0, "fruit"],
@@ -345,7 +345,8 @@ for src, parts in OVERRIDES.items():
         gd = pt.get("garden")
         if not gd: continue
         o = next(b["obb"] for b in buildings if b["id"].endswith("-0") and b.get("extras") == pt.get("extras"))
-        trees = [t for t in trees if math.hypot(t[0] - o["cx"], t[1] - o["cz"]) > gd["clear"]]
+        trees = [t for t in trees if math.hypot(t[0] - o["cx"], t[1] - o["cz"]) > gd["clear"]
+                 and all(math.hypot(t[0] - o["cx"] - dx, t[1] - o["cz"] - dz) > 2.5 for dx, dz in gd.get("drop", []))]
         hedges = [h for h in hedges if all(math.hypot(p[0] - o["cx"], p[1] - o["cz"]) > gd["clear"] for p in h["p"])]
         ux, uz = math.cos(o["ang"]), math.sin(o["ang"])
         for dx, dz, h, r, kind in gd["plant"]:
