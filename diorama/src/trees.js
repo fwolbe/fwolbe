@@ -52,7 +52,13 @@ export function buildTrees(data, surf, date, style = 'cardboard', inside = () =>
     const y = surf(x, z);
     const h = Math.max(h0, 1.2), r = r0;
     const lc = LEAF[season], pick = (arr) => arr[Math.floor(rnd(s, 1) * arr.length) % arr.length];
-    if (kind === 'spruce') {
+    if (kind === 'thuja') {
+      lists.cone.push({ x, y: y - .1, z, sx: r, sy: h, sz: r, c: '#3d6236', ry: s * 6 });
+    } else if (kind === 'maple') {
+      // Japanese maple: low, wide, deep red all season
+      lists.trunk.push({ x, y, z, sx: .12, sy: h * .4, sz: .12, c: '#4a3426' });
+      lists.small.push({ x, y: y + h * .55, z, sx: r, sy: h * .5, sz: r, c: season === 'winter' ? '#5a3a34' : '#7c2a30', ry: s * 6 });
+    } else if (kind === 'spruce') {
       lists.trunk.push({ x, y, z, sx: .35, sy: h * .2, sz: .35, c: '#6b4a2e' });
       lists.cone.push({ x, y: y + h * .12, z, sx: r * 1.1, sy: h * .95, sz: r * 1.1, c: pick(CONIFER), ry: s * 6 });
     } else if (kind === 'pine') {

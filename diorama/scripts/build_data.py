@@ -147,6 +147,29 @@ OVERRIDES = {
         {"dx": .55, "dz": -11.3, "len": 5.4, "wid": 5.9, "ang": 1.5708, "eave": 3.6, "pitch": 52, "roof": "gable", "vanes": True},
         {"dx": 2.05, "dz": 7.65, "len": 17.5, "wid": 7.5, "ang": 0, "eave": 3.8, "pitch": 0, "roof": "flat"},
     ],
+    # 31B, from street-level photos and an aerial: two storeys on a dark plinth, light greige render,
+    # grey window surrounds, an anthracite hip roof with a street-side dormer and two chimneys,
+    # a flat canopy over the double front door, a pergola and an upper balcony to the south.
+    # Extras are placed in the box's frame: s along its length (east), t across it (south).
+    "w1179895567": [
+        {"own": True, "eave": 6.3, "pitch": 27, "roof": "hip", "kind": "custom", "rc": "anthracite", "wc": "greige", "seed": 20.4,
+         "gref": [-6.0, 0.0],
+         "extras": [
+             {"type": "dormer", "s": -3.6, "t": 0.0, "w": 1.9},
+             {"type": "chimney", "s": 0.4, "t": -1.4, "w": .9, "up": .9},
+             {"type": "chimney", "s": -1.4, "t": -2.2, "w": .55, "up": .6, "vane": True},
+             {"type": "canopy", "s": -6.06, "t": 0.0, "w": 3.2, "d": 1.4, "y": 3.1},
+             {"type": "pergola", "s": -2.6, "t": 7.6, "w": 7.0, "d": 3.4, "y": 2.6},
+             {"type": "balcony", "s": 4.4, "t": 6.4, "w": 3.0, "d": 1.2, "y": 3.3},
+         ],
+         # the garden as photographed: clear the random filler, keep it mostly lawn, add the
+         # row of columnar conifers and the red Japanese maples by the front door
+         "garden": {"clear": 16, "plant": [
+             [-8.0, -6.6, 2.6, .55, "thuja"], [-8.0, -5.5, 2.8, .55, "thuja"], [-8.0, -4.4, 2.6, .55, "thuja"], [-8.0, -3.3, 2.7, .55, "thuja"],
+             [-8.6, -1.4, 1.9, 1.5, "maple"], [-7.6, 2.6, 1.7, 1.3, "maple"],
+             [-12.5, -9.5, 7.5, 2.2, "spruce"], [12.5, 8.5, 6.5, 3.0, "fruit"],
+         ]}},
+    ],
 }
 for src, parts in OVERRIDES.items():
     hit = next((i for i, b in enumerate(raw_ids) if b == src), None)
@@ -155,11 +178,15 @@ for src, parts in OVERRIDES.items():
     c = Polygon(base["fp"]).centroid
     del buildings[hit]; del raw_ids[hit]
     for k, pt in enumerate(parts):
+        if pt.get("own"):   # keep the mapped footprint's own box
+            o = base["obb"]; pt = {**pt, "dx": o["cx"] - c.x, "dz": o["cz"] - c.y, "len": o["len"], "wid": o["wid"], "ang": o["ang"]}
         cx, cz = c.x + pt["dx"], c.y + pt["dz"]
-        rec = {"id": f'{base["id"]}-{k}', "kind": "chapel", "eave": pt["eave"], "pitch": pt["pitch"], "roof": pt["roof"], "rect": 1.0,
+        g = pt.get("gref", [0, 0])
+        rec = {"id": f'{base["id"]}-{k}', "kind": pt.get("kind", "chapel"), "eave": pt["eave"], "pitch": pt["pitch"], "roof": pt["roof"], "rect": 1.0,
                "obb": {"cx": rnd(cx), "cz": rnd(cz), "len": pt["len"], "wid": pt["wid"], "ang": pt["ang"]},
-               "rc": "redtile", "wc": "white", "seed": 10 + k * .1, "g": [rnd(c.x), rnd(c.y)],
-               "vanes": pt.get("vanes", False), "chimney": pt.get("chimney", False), "name": base.get("name")}
+               "rc": pt.get("rc", "redtile"), "wc": pt.get("wc", "white"), "seed": pt.get("seed", 10 + k * .1),
+               "g": [rnd(cx + g[0]), rnd(cz + g[1])] if "gref" in pt else [rnd(c.x), rnd(c.y)],
+               "vanes": pt.get("vanes", False), "chimney": pt.get("chimney", False), "extras": pt.get("extras", []), "name": base.get("name")}
         L, W, a = pt["len"] / 2, pt["wid"] / 2, pt["ang"]
         ux, uz, vx, vz = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
         rec["fp"] = [[rnd(cx + sx * ux * L + sy * vx * W), rnd(cz + sx * uz * L + sy * vz * W)] for sx, sy in [(-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1)]]
@@ -300,6 +327,16 @@ for i, p in enumerate(plots):
         garden.append([rnd(x, 1), rnd(z, 1), rnd(h, 1), rnd(rad, 1), kind, rnd(rng.random(), 3)])
         want -= 1
 trees += garden
+for src, parts in OVERRIDES.items():
+    for pt in parts:
+        gd = pt.get("garden")
+        if not gd: continue
+        o = next(b["obb"] for b in buildings if b["id"].endswith("-0") and b.get("extras") == pt.get("extras"))
+        trees = [t for t in trees if math.hypot(t[0] - o["cx"], t[1] - o["cz"]) > gd["clear"]]
+        hedges = [h for h in hedges if all(math.hypot(p[0] - o["cx"], p[1] - o["cz"]) > gd["clear"] for p in h["p"])]
+        ux, uz = math.cos(o["ang"]), math.sin(o["ang"])
+        for dx, dz, h, r, kind in gd["plant"]:
+            trees.append([rnd(o["cx"] + ux * dx - uz * dz, 1), rnd(o["cz"] + uz * dx + ux * dz, 1), h, r, kind, .5])
 # drawn houses use their oriented box, so keep every tree clear of those boxes too
 def obb_poly(b, grow):
     o = b["obb"]; ux, uz = math.cos(o["ang"]), math.sin(o["ang"]); vx, vz = -uz, ux

@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cardboard } from './materials.js';
 
-const WALL = { white: '#f2ede2', cream: '#efdfba', yellow: '#e8c063', falu: '#a8432f', grey: '#bdb9ae', blue: '#93abc0', green: '#a1b28e', brick: '#a65a3e' };
-const ROOF = { tile: '#c4643a', darktile: '#8e3f2b', black: '#3d3c3f', grey: '#727579', copper: '#6f9c87', redtile: '#9a4630' };
+const WALL = { greige: '#e3ddd1', white: '#f2ede2', cream: '#efdfba', yellow: '#e8c063', falu: '#a8432f', grey: '#bdb9ae', blue: '#93abc0', green: '#a1b28e', brick: '#a65a3e' };
+const ROOF = { tile: '#c4643a', darktile: '#8e3f2b', black: '#3d3c3f', grey: '#727579', copper: '#6f9c87', redtile: '#9a4630', anthracite: '#33363b' };
 const TRIM = '#f6f1e6';
 
 // Window pattern and lit windows at night, drawn on the walls from a per-vertex wall coordinate.
@@ -11,7 +11,7 @@ const WIN_GLSL = /* glsl */`
   varying vec4 vWall;
   float winMask(vec4 w, out float id){
     float u = w.x, v = w.y, len = mod(w.z, 1000.), cap = floor(w.z / 1000.) * .1;
-    if (w.w > 9.) {
+    if (w.w > 9. && w.w < 20.) {
       // church: one row of tall round-arched windows
       float n2 = max(1., floor(len / 3.2)), sp2 = len / n2, dx = abs(u - (floor(u / sp2) + .5) * sp2);
       id = floor(u / sp2) * 7.13 + w.w * 91.7;
@@ -217,6 +217,7 @@ export function buildBuildings(data, surf, inside = () => true) {
       top = Math.max(top, t.top);
     }
     if (b.vanes || b.chimney) roofGeoms.push(...chapelDetails(b, eave));
+    if (b.extras && b.extras.length) roofGeoms.push(...houseExtras(b, eave, yGround, surf));
     info.push({ b, ground: yGround, top, eave });
   }
 
@@ -239,6 +240,12 @@ export function buildBuildings(data, surf, inside = () => true) {
       diffuseColor.rgb = mix(diffuseColor.rgb, glass, frame);
       // plinth: the church has a tall dark-painted one
       bool chapel = vWall.w > 9.;
+      // hand-modelled houses (seed 20+): grey surrounds around each window
+      if (vWall.w >= 20.) {
+        float sid; float ring = winMask(vec4(vWall.x, vWall.y - .14, vWall.z, vWall.w), sid) + winMask(vec4(vWall.x, vWall.y + .14, vWall.z, vWall.w), sid)
+          + winMask(vec4(vWall.x + .14, vWall.y, vWall.z, vWall.w), sid) + winMask(vec4(vWall.x - .14, vWall.y, vWall.z, vWall.w), sid);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.42, .45, .49), step(.5, ring) * (1. - wm));
+      }
       float baseBand = 1. - step(chapel ? .75 : .3, vWall.y);
       diffuseColor.rgb = mix(diffuseColor.rgb, chapel ? vec3(.2, .21, .23) : vec3(.55, .53, .5), baseBand * .9);
     `,
@@ -295,6 +302,53 @@ function chapelDetails(b, eave) {
     const s = len * .18, t = -wid * .16, yRoof = eave + (wid / 2 - Math.abs(t)) * tan;
     const h = ridge + .5 - yRoof + 1;
     put(new THREE.BoxGeometry(.9, h, .9), s, t, yRoof - 1 + h / 2, '#3b3b3e');
+  }
+  return out;
+}
+
+// Dormers, chimneys, canopies, pergolas and balconies for hand-modelled houses, placed in the
+// building's own frame: s along its length, t across it.
+function houseExtras(b, eave, yGround, surf) {
+  const { cx, cz, len, wid, ang } = b.obb;
+  const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+  const tan = Math.tan(THREE.MathUtils.degToRad(b.pitch));
+  const at = (s, t) => [cx + ux * s + vx * t, cz + uz * s + vz * t];
+  // hip roof height over a point: limited by the nearest eave line
+  const roofY = (s, t) => eave + Math.max(0, Math.min(len / 2 - Math.abs(s), wid / 2 - Math.abs(t))) * tan;
+  const out = [];
+  const box = (sx, sy, sz, s, t, y, colour) => {
+    const g = new THREE.BoxGeometry(sx, sy, sz).toNonIndexed(); g.rotateY(-ang);
+    const [x, z] = at(s, t); g.translate(x, y + sy / 2, z); setColour(g, colour, .5); out.push(g);
+  };
+  for (const e of b.extras) {
+    if (e.type === 'chimney') {
+      const yr = roofY(e.s, e.t), top = eave + Math.min(len, wid) / 2 * tan + e.up;
+      box(e.w, top - yr + .8, e.w, e.s, e.t, yr - .8, '#3c3f44');
+      box(e.w + .14, .12, e.w + .14, e.s, e.t, top, '#2c2e32');
+      if (e.vane) { box(.06, 1.1, .06, e.s, e.t, top, '#2a2826'); box(.5, .05, .05, e.s, e.t, top + .9, '#2a2826'); }
+    } else if (e.type === 'dormer') {
+      // a small shed dormer on the slope facing -s, with a window in its front wall
+      const dir = Math.sign(e.s) || -1, front = e.s, yr = roofY(front, e.t), h = .85;
+      box(1.4, h + .6, e.w, front - dir * .7, e.t, yr - .6, '#e3ddd1');
+      box(1.7, .12, e.w + .25, front - dir * .6, e.t, yr + h, '#33363b');
+      box(.06, .5, e.w * .55, front + dir * .02, e.t, yr + .18, '#2b333c');
+    } else if (e.type === 'canopy') {
+      const y = yGround + e.y;
+      box(e.d, .16, e.w, e.s - e.d / 2, e.t, y, '#2f3236');
+      for (const tt of [-1, 1]) box(.12, e.y, .12, e.s - e.d + .15, e.t + tt * (e.w / 2 - .2), yGround - .3, '#4a4e54');
+      box(1.4, .5, e.w * .8, e.s - .7, e.t, yGround - .4, '#6d6e70');
+    } else if (e.type === 'pergola') {
+      const [x, z] = at(e.s, e.t), y0 = surf(x, z), wood = '#8b6b4b';
+      for (const ss of [-1, 1]) for (const tt of [-1, 1]) box(.16, e.y, .16, e.s + ss * (e.w / 2 - .2), e.t + tt * (e.d / 2 - .2), y0, wood);
+      for (const tt of [-1, 1]) box(e.w, .2, .14, e.s, e.t + tt * (e.d / 2 - .2), y0 + e.y - .2, wood);
+      for (let k = -e.w / 2 + .3; k <= e.w / 2 - .3; k += .55) box(.08, .12, e.d + .3, e.s + k, e.t, y0 + e.y, wood);
+    } else if (e.type === 'balcony') {
+      const y = yGround + e.y;
+      box(e.w, .18, e.d, e.s, e.t, y, '#ecebe6');
+      box(e.w, 1, .05, e.s, e.t + e.d / 2, y + .18, '#f2f1ec');
+      for (const ss of [-1, 1]) box(.05, 1, e.d, e.s + ss * e.w / 2, e.t, y + .18, '#f2f1ec');
+      for (const ss of [-1, 1]) box(.14, y - surf(...at(e.s, e.t)) + .5, .14, e.s + ss * (e.w / 2 - .1), e.t + e.d / 2 - .1, surf(...at(e.s, e.t)) - .5, '#f2f1ec');
+    }
   }
   return out;
 }
