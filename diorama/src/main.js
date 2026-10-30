@@ -15,6 +15,7 @@ import { buildBuildings } from './buildings.js';
 import { buildTrees, buildHedges } from './trees.js';
 import { buildRoads, roadGraph, buildLamps, roadHeight, ROAD_SNOW } from './roads.js';
 import { buildTraffic } from './cars.js';
+import { buildBuses } from './buses.js';
 import { sunPosition, sunDirection, lightingFor, sunEvents } from './sky.js';
 import { buildWeather, PRESETS, fetchLive } from './weather.js';
 import { TiltShiftShader, FinishShader } from './post.js';
@@ -121,6 +122,9 @@ const terrainMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }),
     }`,
 });
 
+// relay for real-time buses: ?buses=<url>, or busRelay in config.json at build time
+const BUS_RELAY = params.get('buses') || (typeof __BUS_RELAY__ !== 'undefined' ? __BUS_RELAY__ : '');
+let buses = null;
 let world = null, field = null, surf = null, traffic = null, lamps = null, roadMat = null, graph = null, home = null;
 function build() {
   if (world) { scene.remove(world); world.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -150,6 +154,8 @@ function build() {
   lamps = buildLamps(DATA, field, plate); world.add(lamps.group);
   graph = roadGraph(DATA);
   traffic = buildTraffic(graph, field, plate); world.add(traffic.group);
+  if (buses) buses.dispose();
+  buses = buildBuses(DATA, field, graph, () => plate, BUS_RELAY); world.add(buses.group);
   home = homeMarker(bld.info); world.add(home.obj);
   world.add(nameplate());
   scene.add(world);
@@ -408,6 +414,8 @@ function frame() {
   const w = currentWeather();
   weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (plate.inside(x, z) ? surf(x, z) : plate.bottom));
   traffic.update(state.lapse ? dt * 4 : dt, trafficDensity(state.time), U.uNight.value);
+  buses.update(dt, state.live && !state.lapse, U.uNight.value);
+  busLabel(buses.status);
   home.obj.position.y = home.base + Math.sin(t * 1.6) * .8;
   home.pin.rotation.y = t * .8;
   home.pin.material.emissiveIntensity = U.uNight.value * .6;
@@ -444,6 +452,17 @@ function frame() {
 document.getElementById('loading').classList.add('done');
 frame();
 window.__diorama = { state, camera, controls, flyTo, renderer, scene };
+
+// bus status under the clock
+let busText = '';
+function busLabel(s) {
+  const busEl = document.getElementById('bus');
+  let t = '';
+  if (s.state === 'live') t = state.live && !state.lapse ? `🚌 ${s.near} on the plate · ${s.count} within 1.5 km` : '🚌 live buses only in Live time';
+  else if (s.state === 'connecting') t = '🚌 connecting…';
+  else if (s.state === 'error') t = '🚌 bus feed unavailable';
+  if (t !== busText) { busEl.textContent = t; busEl.hidden = !t; busText = t; }
+}
 
 // compass: the arrow points to north on screen; tap to turn north up
 const needle = document.querySelector('#compass i');

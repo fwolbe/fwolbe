@@ -3,7 +3,9 @@
 //   dist/artifact.html – the same page without the document skeleton, for claude.ai artifacts
 import { build } from 'esbuild';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-const r = await build({ entryPoints: ['src/main.js'], bundle: true, minify: !process.env.DEV, format: 'iife', write: false, target: 'es2020', loader: { '.json': 'json' }, legalComments: 'none' });
+let relay = '';
+try { relay = JSON.parse(readFileSync('config.json', 'utf8')).busRelay || ''; } catch {}
+const r = await build({ define: { __BUS_RELAY__: JSON.stringify(relay) }, entryPoints: ['src/main.js'], bundle: true, minify: !process.env.DEV, format: 'iife', write: false, target: 'es2020', loader: { '.json': 'json' }, legalComments: 'none' });
 const js = r.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
 const html = readFileSync('src/index.html', 'utf8').replace('<script>/*APP*/</script>', () => `<script>${js}</script>`);
 mkdirSync('dist', { recursive: true });

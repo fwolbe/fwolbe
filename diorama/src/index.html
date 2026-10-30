@@ -32,6 +32,7 @@
   #badge .sep { width: 2px; background: #f2c23055; margin: 2px 14px; }
   #badge .clock { font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--cream); font-variant-numeric: tabular-nums; }
   #badge .wx { font: 600 12px Inter, sans-serif; color: var(--cream); margin-top: 4px; white-space: nowrap; }
+  #badge .bus { color: var(--muted); font-size: 11px; margin-top: 2px; }
 
   #compass { position: fixed; right: max(14px, env(safe-area-inset-right)); top: max(14px, env(safe-area-inset-top)); width: 46px; height: 46px; border-radius: 50%;
     background: var(--panel); border: 2px solid var(--yellow); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px #0006; }
@@ -75,7 +76,7 @@
 <div id="badge">
   <div><div class="t">BYMARKEN</div><div class="s">Jönköping · diorama</div></div>
   <div class="sep"></div>
-  <div><div class="clock" id="clock">--:--</div><div class="wx" id="wx">…</div></div>
+  <div><div class="clock" id="clock">--:--</div><div class="wx" id="wx">…</div><div class="wx bus" id="bus" hidden></div></div>
 </div>
 <div id="compass" title="Point north"><i></i><b>N</b></div>
 <div id="dock">

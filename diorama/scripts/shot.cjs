@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
   await p.goto('file://' + process.cwd() + '/dist/index.html?shot&pr=1&' + q, { waitUntil: 'commit' });
   await p.waitForFunction(() => window.__ready, null, { timeout: 170000 }).catch(() => logs.push('not ready'));
   await p.screenshot({ path: out, timeout: 280000 });
-  console.log(await p.evaluate(() => { const r = window.__diorama.renderer.info.render; return 'tris ' + r.triangles + ' calls ' + r.calls; }));
+  console.log(await p.evaluate(() => { const d = window.__diorama; if (!d) return 'no app'; const r = d.renderer.info.render; return 'tris ' + r.triangles + ' calls ' + r.calls; }));
   console.log('ms', Date.now() - t0);
   console.log(logs.slice(0, 15).join('\n'));
   await b.close();

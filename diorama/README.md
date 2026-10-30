@@ -17,6 +17,7 @@ Style reference: *Cardboard Racer*, zoomed out from track scale to neighbourhood
 | **Approximated:** hedges and most garden trees | Derived | Hedges only along street frontages; garden trees spread per house within each street block. Real property lines are not in the open data, so none are drawn |
 | **Approximated:** roof shapes and colours, wall colours, heights | Derived | From footprint shape and size; colours are a plausible Swedish mix, not observed |
 | **Simulated:** traffic | Simulated | Car count follows a weekday/weekend time-of-day curve |
+| Buses | JLT live vehicle positions (Trafiklab GTFS Regional Realtime) via `relay/` | Only in Live time and only on a hosted page; the claude.ai artifact sandbox blocks the request |
 
 ## Build
 
@@ -38,6 +39,6 @@ URL options on the standalone page: `?t=16:30` fixes the time, `?weather=snow|ra
 
 ## Next
 
-- Real-time JLT buses (Trafiklab GTFS-Realtime, needs an API key and a small proxy for CORS).
+- Line numbers on buses (needs the GTFS Regional Static feed for route names).
 - Lantmäteriet 1 m laser elevation and tree data in place of the 30 m DEM and the filled-in garden trees.
 - Observed roof colours from orthophoto.
