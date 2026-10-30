@@ -1,16 +1,22 @@
-"""Pull Overture Maps features inside the diorama bbox using HTTP range reads (no S3 SDK needed)."""
-import sys, json, math, re, requests, fsspec, pyarrow.parquet as pq
+"""Pull Overture Maps features inside a site's area using HTTP range reads (no S3 SDK needed).
+
+    python3 scripts/fetch_overture.py <site>          all the layers the diorama uses"""
+import os, sys, json, math, re, requests, fsspec, pyarrow.parquet as pq
 from concurrent.futures import ThreadPoolExecutor
 from shapely import wkb
 from shapely.geometry import mapping
 
-import os
-CFG = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
+SITE = os.path.join(os.path.dirname(__file__), "..", "sites", sys.argv[1] if len(sys.argv) > 1 else "example")
+RAW = os.path.join(SITE, "raw")
+CFG = json.load(open(os.path.join(SITE, "site.json")))
 LAT0, LON0, R = CFG["lat"], CFG["lon"], float(CFG.get("half", 260)) + 80
 DLAT = R / 111132; DLON = R / (111320 * math.cos(math.radians(LAT0)))
 BX = (LON0 - DLON, LAT0 - DLAT, LON0 + DLON, LAT0 + DLAT)
 BASE = "https://overturemaps-us-west-2.s3.amazonaws.com"
-REL = "release/2026-10-21.0"
+def latest_release():
+    t = requests.get(f"https://overturemaps-us-west-2.s3.amazonaws.com/?list-type=2&prefix=release/&delimiter=/", timeout=60).text
+    return sorted(re.findall(r"<Prefix>(release/[^<]+/)</Prefix>", t))[-1].rstrip("/")
+REL = os.environ.get("OVERTURE_RELEASE") or latest_release()
 fs = fsspec.filesystem("http")
 
 def keys(prefix):
@@ -56,9 +62,13 @@ def pull(theme, typ):
         if isinstance(o, (list, tuple)): return [clean(v) for v in o]
         if isinstance(o, bytes): return None
         return o
-    json.dump(clean(res), open(f"{typ}.json", "w"))
+    os.makedirs(RAW, exist_ok=True)
+    json.dump(clean(res), open(os.path.join(RAW, f"{typ}.json"), "w"))
     print(typ, len(ks), "files ->", len(res), flush=True)
 
+LAYERS = ["buildings/building", "transportation/segment", "base/land_use", "base/land", "base/land_cover",
+          "base/water"]
 if __name__ == "__main__":
-    for spec in sys.argv[1:]:
+    print("overture", REL)
+    for spec in sys.argv[2:] or LAYERS:
         pull(*spec.split("/"))

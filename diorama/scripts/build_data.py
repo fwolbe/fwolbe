@@ -1,6 +1,8 @@
-"""Turn raw downloads (Copernicus DEM, Meta canopy height, Overture Maps) into one compact
-scene file in local metres: x = east, z = south, origin at home."""
-import json, math, hashlib, os
+"""Turn a site's raw downloads (Copernicus DEM, Meta canopy height, Overture Maps) into one
+compact scene file in local metres: x = east, z = south, origin at the site's centre.
+
+    python3 scripts/build_data.py <site>     reads sites/<site>/site.json, raw/, overrides.json"""
+import json, math, hashlib, os, sys
 import numpy as np, rasterio
 from rasterio.windows import from_bounds
 from scipy import ndimage
@@ -9,10 +11,11 @@ from shapely.ops import unary_union
 from shapely.prepared import prep
 
 HERE = os.path.dirname(__file__)
-RAW = os.path.join(HERE, "..", "data-raw")
-OUT = os.path.join(HERE, "..", "src", "data.json")
+SITE = os.path.join(HERE, "..", "sites", sys.argv[1] if len(sys.argv) > 1 else "example")
+RAW = os.path.join(SITE, "raw")
+OUT = os.path.join(SITE, "data.json")
 
-CFG = json.load(open(os.path.join(os.path.dirname(__file__), "..", "config.json")))
+CFG = json.load(open(os.path.join(SITE, "site.json")))
 LAT0, LON0 = CFG["lat"], CFG["lon"]
 H = float(CFG.get("half", 260))   # half size of the diorama, metres
 CELL = 2.0                     # terrain grid resolution, metres
@@ -135,45 +138,10 @@ for b in load("building"):
     if kind == "church": rec["rc"], rec["wc"] = "copper", "brick"
     if rec["fp"]:
         buildings.append(rec); raw_ids.append(b["sources"][0].get("record_id", "").split("@")[0])
-# Hand-modelled buildings: footprints alone can't say how a building is roofed. Parts are boxes
-# relative to the footprint centroid (dx east, dz south, metres); ridges run along "len".
-OVERRIDES = {
-    # Bymarkskyrkan, from street-level photos: white rendered walls on a dark plinth, steep
-    # red-brown tile gables, a taller west part, a lower east part, a gabled north porch,
-    # a flat-roofed annex to the south, no tower.
-    "w149877159": [
-        {"dx": -5.35, "dz": -2.6, "len": 12.5, "wid": 12.4, "ang": 0, "eave": 6.6, "pitch": 54, "roof": "gable", "vanes": True, "chimney": True},
-        {"dx": 5.15, "dz": -2.15, "len": 8.5, "wid": 12.1, "ang": 0, "eave": 4.8, "pitch": 52, "roof": "gable", "vanes": True},
-        {"dx": .55, "dz": -11.3, "len": 5.4, "wid": 5.9, "ang": 1.5708, "eave": 3.6, "pitch": 52, "roof": "gable", "vanes": True},
-        {"dx": 2.05, "dz": 7.65, "len": 17.5, "wid": 7.5, "ang": 0, "eave": 3.8, "pitch": 0, "roof": "flat"},
-    ],
-    # 31B, from street-level and drone photos: two storeys on a dark plinth, light greige render,
-    # grey window surrounds, an anthracite hip roof with a street-side dormer and two chimneys,
-    # a flat canopy over the double front door, a two-storey loggia cut into the south-east corner
-    # and opening east (balcony above, covered patio below), a raised wooden deck with screens in
-    # front of it to the east, and a freestanding pergola over the steps south-west of the house.
-    # Extras are placed in the box's frame: s along its length (east), t across it (south).
-    "w1179895567": [
-        {"own": True, "eave": 6.3, "pitch": 27, "roof": "hip", "kind": "custom", "rc": "anthracite", "wc": "greige", "seed": 20.4,
-         "gref": [-6.0, 0.0], "notch": {"corner": "se", "ds": 1.9, "dt": 4.4},
-         "extras": [
-             {"type": "dormer", "s": -3.6, "t": 0.0, "w": 1.9},
-             {"type": "chimney", "s": 0.4, "t": -1.4, "w": .9, "up": .9},
-             {"type": "chimney", "s": -1.4, "t": -2.2, "w": .55, "up": .6, "vane": True},
-             {"type": "canopy", "s": -6.06, "t": 0.0, "w": 3.2, "d": 1.4, "y": 3.1},
-             {"type": "loggia", "y": 3.3},
-             {"type": "deck", "s": 7.41, "t": 4.3, "w": 6.5, "d": 6.2, "y": .55, "open": "west"},
-             {"type": "pergola", "s": -7.6, "t": 9.0, "w": 4.2, "d": 3.2, "y": 2.5},
-         ],
-         # the garden as photographed: clear the random filler, keep it mostly lawn, add the
-         # row of columnar conifers and the red Japanese maples by the front door
-         "garden": {"clear": 16, "drop": [[14.3, 10.6]], "plant": [
-             [-8.0, -6.6, 2.6, .55, "thuja"], [-8.0, -5.5, 2.8, .55, "thuja"], [-8.0, -4.4, 2.6, .55, "thuja"], [-8.0, -3.3, 2.7, .55, "thuja"],
-             [-8.6, -1.4, 1.9, 1.5, "maple"], [-7.6, 2.6, 1.7, 1.3, "maple"],
-             [-12.5, -9.5, 7.5, 2.2, "spruce"], [12.5, 8.5, 6.5, 3.0, "fruit"],
-         ]}},
-    ],
-}
+# Hand-modelled buildings live in the site's overrides.json (kept out of git: way ids identify
+# buildings), keyed by OpenStreetMap way id.
+_ov = os.path.join(SITE, "overrides.json")
+OVERRIDES = {k: v["parts"] for k, v in (json.load(open(_ov)) if os.path.exists(_ov) else {}).items() if not k.startswith("_")}
 for src, parts in OVERRIDES.items():
     hit = next((i for i, b in enumerate(raw_ids) if b == src), None)
     if hit is None: continue
@@ -357,25 +325,20 @@ def obb_poly(b, grow):
     L, W = o["len"] / 2 + grow, o["wid"] / 2 + grow
     return Polygon([(o["cx"] + sx * ux * L + sy * vx * W, o["cz"] + sx * uz * L + sy * vz * W) for sx, sy in [(-1, -1), (1, -1), (1, 1), (-1, 1)]])
 boxes = prep(unary_union([obb_poly(b, 1.2) for b in buildings]))
+# and out of lakes, ponds and rivers
+wet = []
+for a in load("water"):
+    try: g = local_geom(a["geometry"])
+    except ValueError: continue
+    if g.geom_type in ("Polygon", "MultiPolygon"): wet.append(g.buffer(0))
+wet = prep(unary_union(wet).buffer(1.0)) if wet else None
 before = len(trees)
-trees = [t for t in trees if not boxes.contains(Point(t[0], t[1]))]
+trees = [t for t in trees if not boxes.contains(Point(t[0], t[1])) and not (wet and wet.contains(Point(t[0], t[1])))]
+if wet: hedges = [h for h in hedges if not any(wet.contains(Point(*p)) for p in h["p"])]
 print("hedges", len(hedges), "garden trees", len(garden), "dropped in houses", before - len(trees))
 
-# ---------------------------------------------------------------- points of interest
-pois = [{"k": "home", "name": "Hem", "x": 0.0, "z": 0.0}]
-for p in load("place"):
-    nm = (p.get("names") or {}).get("primary")
-    if nm in ("Bymarkskyrkan", "Sippans Lekpark"):
-        x, z = to_local(*p["geometry"]["coordinates"][:2])
-        pois.append({"k": "place", "name": nm, "x": rnd(x), "z": rnd(z)})
-for a in load("infrastructure"):
-    if a.get("class") == "bus_stop":
-        x, z = to_local(*a["geometry"]["coordinates"][:2])
-        if abs(x) < H and abs(z) < H:
-            pois.append({"k": "bus_stop", "name": (a.get("names") or {}).get("primary"), "x": rnd(x), "z": rnd(z)})
-
 data = {"origin": {"lat": LAT0, "lon": LON0}, "half": H, "terrain": terrain, "buildings": buildings,
-        "roads": roads, "areas": areas, "trees": trees, "hedges": hedges, "pois": pois}
+        "roads": roads, "areas": areas, "trees": trees, "hedges": hedges}
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 json.dump(data, open(OUT, "w"), separators=(",", ":"))
 print("wrote", OUT, os.path.getsize(OUT) // 1024, "KB")

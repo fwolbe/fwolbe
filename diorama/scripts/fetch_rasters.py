@@ -1,12 +1,15 @@
-"""Download elevation (Copernicus GLO-30) and 1 m canopy height (Meta/WRI) around the configured point."""
-import os, json, math, urllib.request
+"""Download elevation (Copernicus GLO-30) and 1 m canopy height (Meta/WRI) around a site's centre.
+
+    python3 scripts/fetch_rasters.py <site>"""
+import os, json, math, sys, urllib.request
 import numpy as np, rasterio
 from rasterio.windows import from_bounds
 from rasterio.warp import transform_bounds
 
 HERE = os.path.dirname(__file__)
-RAW = os.path.join(HERE, "..", "data-raw")
-CFG = json.load(open(os.path.join(HERE, "..", "config.json")))
+SITE = os.path.join(HERE, "..", "sites", sys.argv[1] if len(sys.argv) > 1 else "example")
+RAW = os.path.join(SITE, "raw")
+CFG = json.load(open(os.path.join(SITE, "site.json")))
 lat0, lon0, R = CFG["lat"], CFG["lon"], float(CFG.get("half", 260)) * 1.6
 os.makedirs(RAW, exist_ok=True)
 

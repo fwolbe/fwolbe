@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import DATA from './data.json';
+import DATA from 'site-data';
 import { makeField, surface, buildTerrain } from './terrain.js';
 import { cardboard, U, WALL_GLSL, STYLES } from './materials.js';
 import { makePlate } from './plate.js';
@@ -22,7 +22,10 @@ import { TiltShiftShader, FinishShader } from './post.js';
 import { setupUI } from './ui.js';
 import { local, atLocal } from './tz.js';
 
+const SITE = __SITE__;
 const LAT = DATA.origin.lat, LON = DATA.origin.lon, HALF = DATA.half;
+document.getElementById('site-name').textContent = SITE.name;
+document.getElementById('site-sub').textContent = SITE.subtitle;
 const params = new URLSearchParams(location.search);
 const MOBILE = matchMedia('(pointer: coarse)').matches || innerWidth < 760;
 const BASE = 10;
@@ -31,7 +34,7 @@ const state = {
   live: true, time: new Date(), lapse: false,
   weatherMode: params.get('weather') || 'live', live_w: null, weather: { ...PRESETS.partly },
   step: Number(params.get('step') ?? 0), exag: Number(params.get('exag') ?? 1.5),
-  tilt: params.get('tilt') !== '0', labels: params.get('labels') === '1', autoRotate: false,
+  tilt: params.get('tilt') !== '0', autoRotate: false,
   style: STYLES[params.get('style')] != null ? params.get('style') : 'cardboard',
   crop: Number(params.get('crop') || 120), shape: params.get('shape') === 'square' ? 'square' : 'round',
 };
@@ -123,7 +126,7 @@ const terrainMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }),
 });
 
 // relay for real-time buses: ?buses=<url>, or busRelay in config.json at build time
-const BUS_RELAY = params.get('buses') || (typeof __BUS_RELAY__ !== 'undefined' ? __BUS_RELAY__ : '');
+const BUS_RELAY = params.get('buses') || SITE.relay;
 let buses = null;
 let world = null, field = null, surf = null, traffic = null, lamps = null, roadMat = null, graph = null, home = null;
 function build() {
@@ -155,11 +158,10 @@ function build() {
   graph = roadGraph(DATA);
   traffic = buildTraffic(graph, field, plate); world.add(traffic.group);
   if (buses) buses.dispose();
-  buses = buildBuses(DATA, field, graph, () => plate, BUS_RELAY); world.add(buses.group);
+  buses = buildBuses(DATA, field, graph, () => plate, BUS_RELAY, SITE.transitSite); world.add(buses.group);
   home = homeMarker(bld.info); world.add(home.obj);
   world.add(nameplate());
   scene.add(world);
-  labels.place(bld.info);
   if (weatherFx) { scene.remove(weatherFx.group); }
   weatherFx = buildWeather(plate.r, hi); scene.add(weatherFx.group);
   applyStyle();
@@ -209,7 +211,7 @@ function nameplate() {
   g.fillStyle = '#2a2420'; g.fillRect(0, 0, 1024, 160);
   g.strokeStyle = '#f2c230'; g.lineWidth = 8; g.strokeRect(14, 14, 996, 132);
   g.fillStyle = '#f2c230'; g.font = 'italic 900 74px "Russo One", "Arial Black", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-  g.fillText('BYMARKEN · JÖNKÖPING', 512, 72);
+  g.fillText(`${SITE.name}${SITE.subtitle ? ' · ' + SITE.subtitle.split('·')[0].trim() : ''}`.toUpperCase(), 512, 72, 960);
   g.font = '600 26px system-ui, sans-serif'; g.fillStyle = '#e9dcc0';
   let lo = Infinity, hi = -Infinity;
   for (let x = -plate.r; x <= plate.r; x += 4) for (let z = -plate.r; z <= plate.r; z += 4) if (plate.inside(x, z)) { const v = DATA_RELIEF(x, z); lo = Math.min(lo, v); hi = Math.max(hi, v); }
@@ -224,55 +226,6 @@ function nameplate() {
   m.position.set(0, yb + 18.75 * m.scale.y / 2 + .6, plate.r + .15);
   return m;
 }
-
-// ------------------------------------------------------------------ labels (HTML, projected)
-const labels = (() => {
-  const el = document.getElementById('labels');
-  let items = [];
-  function place(info) {
-    el.innerHTML = ''; items = [];
-    const add = (text, cls, pos) => { const d = document.createElement('div'); d.className = 'lbl ' + cls; d.textContent = text; el.appendChild(d); items.push({ d, pos }); };
-    for (const p of DATA.pois) {
-      if (p.k === 'home') continue;
-      if (p.k === 'place' && plate.inside(p.x, p.z, 4)) {
-        const b = info.find(i => i.b.kind === 'church' || (i.b.kind === 'chapel' && i.b.id.endsWith('-0')));
-        const pos = p.name === 'Bymarkskyrkan' && b ? new THREE.Vector3(b.b.obb.cx, b.top + 4, b.b.obb.cz) : new THREE.Vector3(p.x, surf(p.x, p.z) + 6, p.z);
-        add(p.name, 'poi', pos);
-      }
-    }
-    // one label per street, on its longest piece
-    const best = new Map();
-    for (const r of DATA.roads) {
-      if (!r.n || !['residential', 'tertiary', 'service', 'unclassified'].includes(r.k)) continue;
-      let len = 0; for (let k = 1; k < r.p.length; k++) len += Math.hypot(r.p[k][0] - r.p[k - 1][0], r.p[k][1] - r.p[k - 1][1]);
-      if (!best.has(r.n) || best.get(r.n).len < len) best.set(r.n, { r, len });
-    }
-    const ry = roadHeight(field);
-    for (const [name, { r, len }] of best) {
-      if (len < 60) continue;
-      const mid = r.p[Math.floor(r.p.length / 2)];
-      if (!plate.inside(mid[0], mid[1], 15)) continue;
-      add(name, 'street', new THREE.Vector3(mid[0], ry(mid[0], mid[1]) + 1.5, mid[1]));
-    }
-    add('Hem', 'home', new THREE.Vector3(home.x, home.base + 9, home.z));
-  }
-  const v = new THREE.Vector3();
-  function update() {
-    el.style.display = state.labels ? '' : 'none';
-    if (!state.labels) return;
-    const dist = camera.position.distanceTo(controls.target);
-    for (const it of items) {
-      if (it.d.classList.contains('home')) it.pos.y = home.obj.position.y + 9;
-      v.copy(it.pos).project(camera);
-      const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
-      const street = it.d.classList.contains('street');
-      const op = street ? THREE.MathUtils.clamp((620 - dist) / 200, 0, 1) : 1;
-      it.d.style.opacity = vis ? op : 0;
-      it.d.style.transform = `translate(-50%,-100%) translate(${(v.x * .5 + .5) * innerWidth}px, ${(-v.y * .5 + .5) * innerHeight}px)`;
-    }
-  }
-  return { place, update };
-})();
 
 // ------------------------------------------------------------------ weather + post
 let weatherFx = null;
@@ -448,7 +401,6 @@ function frame() {
   if (gtao) gtao.enabled = dist < 900;
   renderer.info.reset();
   composer.render(dt);
-  labels.update();
   ui.tick(altDeg, cur, currentWeather());
   frames++;
   if (params.has('shot') && frames >= Number(params.get('frames') || 12)) { window.__ready = true; return; }

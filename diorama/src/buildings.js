@@ -293,7 +293,7 @@ function setColour(g, hex, seed) {
   g.setAttribute('color', new THREE.BufferAttribute(a, 3));
 }
 
-// Iron crosses on the gable peaks and a rendered chimney, as on Bymarkskyrkan.
+// Iron crosses on the gable peaks and a rendered chimney, for hand-modelled churches.
 function chapelDetails(b, eave) {
   const { cx, cz, len, wid, ang } = b.obb;
   const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;

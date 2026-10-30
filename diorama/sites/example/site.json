@@ -1,0 +1,13 @@
+{
+ "_about": "Copy this folder to sites/<your-site>/ and set the centre. name/subtitle show on the page; half is half the plate in metres; transit is optional (see relay/README.md).",
+ "name": "Jönköping",
+ "subtitle": "City centre · diorama",
+ "lat": 57.7826,
+ "lon": 14.1618,
+ "half": 260,
+ "timezone": "Europe/Stockholm",
+ "transit": {
+  "relay": "",
+  "site": ""
+ }
+}

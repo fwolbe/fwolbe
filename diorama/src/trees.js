@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cardboard } from './materials.js';
 
-// Leaf colours by season, for the real date at Jönköping.
+// Leaf colours by season, for the real date (thresholds suit southern Sweden).
 export function seasonOf(date) {
   const d = (date - new Date(Date.UTC(date.getUTCFullYear(), 0, 1))) / 864e5;
   if (d < 105 || d > 318) return 'winter';

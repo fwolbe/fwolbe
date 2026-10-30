@@ -1,5 +1,7 @@
-// Clock helpers pinned to Jönköping time, whatever the viewer's own time zone is.
-const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Stockholm', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+// Clock helpers pinned to the site's time zone, whatever the viewer's own time zone is.
+// eslint-disable-next-line no-undef
+const ZONE = (typeof __SITE__ !== 'undefined' && __SITE__.timezone) || 'Europe/Stockholm';
+const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 function parts(d) {
   const o = {}; for (const p of fmt.formatToParts(d)) o[p.type] = Number(p.value);
   return o;

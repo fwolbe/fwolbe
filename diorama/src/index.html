@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Bymarken Diorama</title>
+<title>Diorama</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -17,17 +17,12 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #2a2420; color: var(--cream); font: 500 14px/1.3 Inter, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
   #stage, #stage canvas { position: fixed; inset: 0; display: block; touch-action: none; }
-  #labels { position: fixed; inset: 0; pointer-events: none; }
-  .lbl { position: absolute; left: 0; top: 0; white-space: nowrap; transition: opacity .3s; will-change: transform; }
-  .lbl.street { font: 700 11px Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fffaf0; text-shadow: 0 1px 2px #000a, 0 0 6px #0008; }
-  .lbl.poi { font: 600 12px Inter, sans-serif; background: var(--cream); color: var(--ink); padding: 3px 8px 4px; border: 2px solid var(--ink); border-radius: 3px; box-shadow: 2px 2px 0 #0006; }
-  .lbl.home { font: 400 14px 'Russo One', sans-serif; background: var(--yellow); color: var(--ink); padding: 3px 10px 4px; border: 2px solid var(--ink); border-radius: 3px; box-shadow: 2px 2px 0 #0007; letter-spacing: .05em; }
 
   /* HUD badge in the Cardboard Racer style */
   #badge { position: fixed; left: max(14px, env(safe-area-inset-left)); top: max(14px, env(safe-area-inset-top)); display: flex; align-items: stretch; gap: 0;
     background: var(--panel); border: 2px solid var(--yellow); clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
     padding: 8px 18px 8px 14px; box-shadow: 0 6px 18px #0006; max-width: calc(100vw - 28px); }
-  #badge .t { font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--yellow); letter-spacing: .02em; }
+  #badge .t { text-transform: uppercase; font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--yellow); letter-spacing: .02em; }
   #badge .s { font: 600 11px/1.2 Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
   #badge .sep { width: 2px; background: #f2c23055; margin: 2px 14px; }
   #badge .clock { font: 400 30px/1 'Russo One', sans-serif; font-style: italic; color: var(--cream); font-variant-numeric: tabular-nums; }
@@ -72,9 +67,8 @@
 </head>
 <body>
 <div id="stage"></div>
-<div id="labels"></div>
 <div id="badge">
-  <div><div class="t">BYMARKEN</div><div class="s">Jönköping · diorama</div></div>
+  <div><div class="t" id="site-name"></div><div class="s" id="site-sub"></div></div>
   <div class="sep"></div>
   <div><div class="clock" id="clock">--:--</div><div class="wx" id="wx">…</div><div class="wx bus" id="bus" hidden></div></div>
 </div>
@@ -107,7 +101,6 @@
     <div class="row"><span class="lab">Layers</span><button data-step="1.5">1.5 m</button><button data-step="3">3 m</button><button data-step="5">5 m</button><button data-step="0">Smooth</button></div>
     <div class="row"><span class="lab">Height</span><button data-exag="1">×1 (true)</button><button data-exag="1.5">×1.5</button><button data-exag="2">×2</button></div>
     <div class="row"><span class="lab">Tilt-shift</span><button data-tilt="1">On</button><button data-tilt="0">Off</button>
-      <span class="lab" style="margin-left:8px">Labels</span><button data-labels="1">On</button><button data-labels="0">Off</button>
       <span class="lab" style="margin-left:8px">Spin</span><button data-spin="1">On</button><button data-spin="0">Off</button></div>
   </div>
 </div>

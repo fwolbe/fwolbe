@@ -1,5 +1,7 @@
 node_modules/
-data-raw/
 dist/
-src/data.json
-config.json
+# a site pins a real place (and often someone's home): only the example is shared
+sites/*
+!sites/example/
+sites/example/raw/
+sites/example/data.json

@@ -23,7 +23,7 @@ function busGeometry() {
   return mergeGeometries(parts);
 }
 
-export function buildBuses(data, field, graph, getPlate, relayUrl) {
+export function buildBuses(data, field, graph, getPlate, relayUrl, siteId) {
   const ry = roadHeight(field);
   const lat0 = data.origin.lat, lon0 = data.origin.lon;
   const MY = 111132, MX = 111320 * Math.cos(lat0 * Math.PI / 180);
@@ -49,7 +49,7 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
   async function poll() {
     if (!relayUrl) return;
     try {
-      const r = await fetch(relayUrl.replace(/\/$/, '') + '/buses', { cache: 'no-store' });
+      const r = await fetch(relayUrl.replace(/\/$/, '') + '/buses' + (siteId ? '?site=' + encodeURIComponent(siteId) : ''), { cache: 'no-store' });
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || r.status);
       const now = Date.now() / 1000, seen = new Set();

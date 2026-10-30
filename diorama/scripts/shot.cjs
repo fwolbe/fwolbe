@@ -9,7 +9,7 @@ const { chromium } = require('playwright');
   p.on('pageerror', e => logs.push('pageerror: ' + e.message + e.stack.slice(0, 600)));
   await p.route(/fonts\.(googleapis|gstatic)|open-meteo/, r => r.abort());
   const t0 = Date.now();
-  await p.goto('file://' + process.cwd() + '/dist/index.html?shot&pr=1&' + q, { waitUntil: 'commit' });
+  await p.goto('file://' + process.cwd() + '/dist/' + (process.env.SITE || 'bymarken') + '/index.html?shot&pr=1&' + q, { waitUntil: 'commit' });
   await p.waitForFunction(() => window.__ready, null, { timeout: 170000 }).catch(() => logs.push('not ready'));
   await p.screenshot({ path: out, timeout: 280000 });
   console.log(await p.evaluate(() => { const d = window.__diorama; if (!d) return 'no app'; const r = d.renderer.info.render; return 'tris ' + r.triangles + ' calls ' + r.calls; }));

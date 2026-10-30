@@ -72,7 +72,6 @@ export function setupUI({ state, events, onTerrain, onTime, onView }) {
   seg('step', 'step', Number, true);
   seg('exag', 'exag', Number, true);
   seg('tilt', 'tilt', (v) => v === '1');
-  seg('labels', 'labels', (v) => v === '1');
   seg('spin', 'autoRotate', (v) => v === '1');
   seg('style', 'style', String, 'style');
   seg('shape', 'shape', String, 'plate');
