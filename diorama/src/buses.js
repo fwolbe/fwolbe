@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cardboard } from './materials.js';
 import { roadHeight } from './roads.js';
+import { makeBusNet } from './busnet.js';
 
 // Real-time JLT buses from the relay (see relay/). Positions arrive every ~15-20 s; between
 // reports each bus glides along its reported heading, kept on the nearest street.
@@ -35,60 +36,13 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
   const glow = new THREE.InstancedMesh(new THREE.BoxGeometry(10, .7, 2.62).translate(-.6, 2.05, 0), glowMat, MAX);
   glow.count = 0;
   const group = new THREE.Group(); group.add(mesh, glow);
+  // ?busdebug: red pins at the raw reported positions, plus a console line per report
+  const rawMat = new THREE.MeshBasicMaterial({ color: '#ff2a2a' });
+  const raw = new THREE.InstancedMesh(new THREE.CylinderGeometry(.6, .6, 8, 6).translate(0, 4, 0), rawMat, 64);
+  raw.count = 0; group.add(raw);
 
-  // Buses live on the street network: a report is matched to the nearest real street (never a
-  // driveway or service road), and between reports a bus drives along the streets, not across them.
-  const BUS_ROADS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street']);
-  const edges = graph.edges.filter(e => BUS_ROADS.has(e.k)).map(e => {
-    const cum = [0];
-    for (let k = 1; k < e.pts.length; k++) cum.push(cum[k - 1] + Math.hypot(e.pts[k][0] - e.pts[k - 1][0], e.pts[k][1] - e.pts[k - 1][1]));
-    return Object.assign(e, { cum, len: cum[cum.length - 1] });
-  });
-  const MATCH_M = 15;
-  function match(x, z, hx, hz) {
-    let best = null, bd = MATCH_M * MATCH_M;
-    for (const e of edges) for (let k = 1; k < e.pts.length; k++) {
-      const a = e.pts[k - 1], b = e.pts[k], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
-      const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2));
-      const d2 = (a[0] + dx * t - x) ** 2 + (a[1] + dz * t - z) ** 2;
-      if (d2 < bd) {
-        bd = d2;
-        const along = hx * dx + hz * dz;
-        best = { e, d: e.cum[k - 1] + t * Math.sqrt(l2), dir: along === 0 ? 0 : Math.sign(along) };
-      }
-    }
-    return best;
-  }
-  function pointAt(e, d) {
-    d = Math.max(0, Math.min(e.len, d));
-    let k = 1; while (k < e.pts.length - 1 && e.cum[k] < d) k++;
-    const a = e.pts[k - 1], b = e.pts[k], seg = e.cum[k] - e.cum[k - 1] || 1, t = (d - e.cum[k - 1]) / seg;
-    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, Math.atan2(b[1] - a[1], b[0] - a[0])];
-  }
-  // drive `dist` metres from (e, d) in direction dir, taking the straightest street at junctions
-  function advance(pos, dist) {
-    let { e, d, dir } = pos;
-    if (!dir) return pos;
-    let left = dist;
-    for (let hop = 0; hop < 8; hop++) {
-      const room = dir > 0 ? e.len - d : d;
-      if (left <= room) return { e, d: d + dir * left, dir };
-      left -= room;
-      const node = dir > 0 ? e.b : e.a, [,, heading] = pointAt(e, dir > 0 ? e.len - .5 : .5);
-      const h = dir > 0 ? heading : heading + Math.PI;
-      let next = null, bestTurn = 1.6;   // never turn sharper than ~90 degrees
-      for (const o of node.out) {
-        if (o.e === e || !BUS_ROADS.has(o.e.k) || !o.e.cum) continue;
-        const [,, h2] = pointAt(o.e, o.dir > 0 ? .5 : o.e.len - .5);
-        const out = o.dir > 0 ? h2 : h2 + Math.PI;
-        const turn = Math.abs(((out - h + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
-        if (turn < bestTurn) { bestTurn = turn; next = o; }
-      }
-      if (!next) return { e, d: dir > 0 ? e.len : 0, dir };   // end of the known streets: wait there
-      e = next.e; dir = next.dir; d = dir > 0 ? 0 : e.len;
-    }
-    return { e, d, dir };
-  }
+  const net = makeBusNet(graph), { match, pointAt, advance } = net;
+  const debug = new URLSearchParams(location.search).has('busdebug');
 
   const buses = new Map();
   const status = { state: relayUrl ? 'connecting' : 'off', count: 0, near: 0, error: null };
@@ -105,8 +59,11 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
         // GTFS bearing: degrees clockwise from north; local x is east, z is south
         const head = b.bearing != null ? b.bearing * Math.PI / 180 : null;
         let hx = head != null ? Math.sin(head) : 0, hz = head != null ? -Math.cos(head) : 0;
-        if (head == null && prev) { hx = x - prev.rx; hz = z - prev.rz; }
-        const on = match(x, z, hx, hz);
+        // how the bus actually moved since its last report beats a reported bearing (some feeds
+        // send 0 or nothing); only trust a bearing when the bus hasn't moved
+        if (prev && Math.hypot(x - prev.rx, z - prev.rz) > 5) { hx = x - prev.rx; hz = z - prev.rz; }
+        const on = match(x, z, hx, hz, prev && prev.on);
+        if (debug) console.log('bus', b.id, b.route, on ? `${on.e.name || on.e.k} ${on.dist.toFixed(1)} m off` : 'no street within 15 m');
         seen.add(b.id);
         if (!on) { buses.delete(b.id); continue; }       // not on a street we know: don't invent one
         if (!on.dir && prev && prev.on && prev.on.e === on.e) on.dir = prev.on.dir;
@@ -115,6 +72,11 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
           x: prev ? prev.x : px, z: prev ? prev.z : pz, yaw: prev ? prev.yaw : pointAt(on.e, on.d)[2] + (on.dir < 0 ? Math.PI : 0) });
       }
       for (const id of [...buses.keys()]) if (!seen.has(id)) buses.delete(id);
+      if (debug) {
+        const mm = new THREE.Matrix4(); let n = 0;
+        for (const b of j.buses) { const [x, z] = local(b.lat, b.lon); if (n < 64) raw.setMatrixAt(n++, mm.makeTranslation(x, field.sample(x, z), z)); }
+        raw.count = n; raw.instanceMatrix.needsUpdate = true;
+      }
       status.state = 'live'; status.count = buses.size; status.error = null;
     } catch (e) {
       status.state = 'error'; status.error = String(e.message || e);
