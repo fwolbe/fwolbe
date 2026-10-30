@@ -446,9 +446,9 @@ function busLabel(s, tr) {
   let t = '';
   if (s.state === 'live') t = state.live && !state.lapse ? `🚌 ${s.near} on the plate · ${s.count} within 1.5 km` : '🚌 live buses only in Live time';
   else if (s.state === 'connecting') t = '🚌 connecting…';
-  else if (s.state === 'error') t = '🚌 bus feed unavailable';
+  else if (s.state === 'error') t = '🚌 bus feed unavailable' + (s.error ? ` (${s.error.slice(0, 60)})` : '');
   if (tr && tr.state === 'live' && state.live && !state.lapse) t += `  ·  🚆 ${tr.near} on the plate · ${tr.count} near`;
-  else if (tr && tr.state === 'error') t += '  ·  🚆 train feed unavailable';
+  else if (tr && tr.state === 'error') t += '  ·  🚆 train feed unavailable' + (tr.error ? ` (${tr.error.slice(0, 60)})` : '');
   if (t !== busText) { busEl.textContent = t; busEl.hidden = !t; busText = t; }
 }
 
