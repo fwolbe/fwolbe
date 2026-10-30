@@ -162,7 +162,7 @@ OVERRIDES = {
              {"type": "chimney", "s": -1.4, "t": -2.2, "w": .55, "up": .6, "vane": True},
              {"type": "canopy", "s": -6.06, "t": 0.0, "w": 3.2, "d": 1.4, "y": 3.1},
              {"type": "loggia", "y": 3.3},
-             {"type": "deck", "s": 8.36, "t": 4.3, "w": 4.6, "d": 6.2, "y": .55, "open": "west"},
+             {"type": "deck", "s": 7.41, "t": 4.3, "w": 6.5, "d": 6.2, "y": .55, "open": "west"},
              {"type": "pergola", "s": -7.6, "t": 9.0, "w": 4.2, "d": 3.2, "y": 2.5},
          ],
          # the garden as photographed: clear the random filler, keep it mostly lawn, add the
