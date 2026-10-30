@@ -58,11 +58,23 @@ export function buildWeather(half, topY) {
     colorBody: `if (abs(vWN.y) < .5 && dot(vWN, vec3(0.,0.,1.)) < .9 && dot(vWN, vec3(0.,0.,-1.)) < .9) diffuseColor.rgb = kraft(vW, vWN, 1.4) * 1.15;`,
   });
   const clouds = [];
+  const shadowOnly = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, side: THREE.DoubleSide });
   for (let i = 0; i < 16; i++) {
     const g = new THREE.ExtrudeGeometry(cloudShape(rand), { depth: 1.4, bevelEnabled: false, curveSegments: 6 });
     g.translate(0, 0, -.7);
     const m = new THREE.Mesh(g, cloudMat);
-    m.castShadow = true;
+    // the cut-out itself casts no shadow (standing on edge it throws road-like stripes in a low
+    // sun); an invisible flat blob at its height throws a soft cloud-shaped patch instead
+    m.castShadow = false;
+    const blob = new THREE.Shape(), n = 14, w = 16 + rand() * 10;
+    for (let k = 0; k <= n; k++) {
+      const a = k / n * Math.PI * 2, rr = w * (.8 + .25 * Math.sin(a * 3 + rand() * 6));
+      const p = [Math.cos(a) * rr, Math.sin(a) * rr * .6];
+      k ? blob.lineTo(...p) : blob.moveTo(...p);
+    }
+    const shade = new THREE.Mesh(new THREE.ShapeGeometry(blob).rotateX(-Math.PI / 2), shadowOnly);
+    shade.castShadow = true; shade.position.y = 4;
+    m.add(shade);
     m.position.set((rand() - .5) * half * 1.8, topY + 45 + rand() * 40, (rand() - .5) * half * 1.8);
     m.rotation.y = rand() * Math.PI;
     m.scale.setScalar((.9 + rand() * .9) * Math.max(.3, Math.min(1, half / 220)));

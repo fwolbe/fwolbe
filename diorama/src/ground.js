@@ -71,6 +71,7 @@ export function paintGround(data, px) {
   g.restore();
 
   const tex = new THREE.CanvasTexture(cv);
+  tex.flipY = false; // canvas row 0 is the north edge (z = -half), which the shader maps to v = 0
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   tex.generateMipmaps = true;

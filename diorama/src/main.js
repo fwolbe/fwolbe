@@ -42,7 +42,7 @@ if (params.get('t')) { const [h, m] = params.get('t').split(':').map(Number); st
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: params.has('shot') });
 renderer.setPixelRatio(params.has('pr') ? Number(params.get('pr')) : Math.min(devicePixelRatio, MOBILE ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !params.has('noshadow');
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
@@ -130,7 +130,15 @@ function build() {
   U.uStep.value = state.step > 0 ? state.step : 2;
   terrainMat.userData.top = field.max;
   plate = makePlate(state.shape, state.crop);
-  const tg = buildTerrain(field, state.step, BASE, plate);
+  // relief inside this plate; the board is only as thick as the lowest ground needs
+  let lo = Infinity, hi = -Infinity;
+  for (let x = -plate.r; x <= plate.r; x += 2) for (let z = -plate.r; z <= plate.r; z += 2) {
+    if (!plate.inside(x, z)) continue; const y = surf(x, z); lo = Math.min(lo, y); hi = Math.max(hi, y);
+  }
+  plate.lo = lo; plate.hi = hi;
+  plate.bottom = lo - THREE.MathUtils.clamp(plate.r * .04, 3, BASE);
+  table.position.y = plate.bottom - .02;
+  const tg = buildTerrain(field, state.step, -plate.bottom, plate);
   const terrain = new THREE.Mesh(tg, terrainMat);
   terrain.receiveShadow = true; terrain.castShadow = true;
   world.add(terrain);
@@ -146,12 +154,6 @@ function build() {
   world.add(nameplate());
   scene.add(world);
   labels.place(bld.info);
-  // relief inside this plate, and the height band the tint and camera use
-  let lo = Infinity, hi = -Infinity;
-  for (let x = -plate.r; x <= plate.r; x += 4) for (let z = -plate.r; z <= plate.r; z += 4) {
-    if (!plate.inside(x, z)) continue; const y = field.sample(x, z); lo = Math.min(lo, y); hi = Math.max(hi, y);
-  }
-  plate.lo = lo; plate.hi = hi;
   if (weatherFx) { scene.remove(weatherFx.group); }
   weatherFx = buildWeather(plate.r, hi); scene.add(weatherFx.group);
   applyStyle();
@@ -208,7 +210,7 @@ function nameplate() {
   g.fillText(`${LAT.toFixed(4)}° N   ${LON.toFixed(4)}° E   ·   ${Math.round(hi - lo)} m relief`, 512, 124);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(120, 18.75), new THREE.MeshStandardMaterial({ map: t, roughness: .6 }));
-  const yb = -BASE;
+  const yb = plate.bottom;
   const w = Math.min(120, plate.r * 1.1), half = w / 2, zf = plate.r - .01;
   let y = Infinity; for (let x = -half; x <= half; x += 2) y = Math.min(y, surf(x, plate.round ? Math.sqrt(Math.max(0, zf * zf - x * x)) : zf));
   const sc = Math.min(w / 120, (y - yb) / 22);
@@ -404,7 +406,7 @@ function frame() {
   U.uTime.value = t;
   const { altDeg } = applyLight(dt);
   const w = currentWeather();
-  weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (plate.inside(x, z) ? surf(x, z) : -BASE));
+  weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (plate.inside(x, z) ? surf(x, z) : plate.bottom));
   traffic.update(state.lapse ? dt * 4 : dt, trafficDensity(state.time), U.uNight.value);
   home.obj.position.y = home.base + Math.sin(t * 1.6) * .8;
   home.pin.rotation.y = t * .8;
