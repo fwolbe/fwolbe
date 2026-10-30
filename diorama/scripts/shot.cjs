@@ -5,7 +5,7 @@ const { chromium } = require('playwright');
   const b = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const p = await b.newPage({ viewport: { width: +w, height: +h } });
   const logs = [];
-  p.on('console', m => { if (['error', 'warning'].includes(m.type())) logs.push(m.type() + ': ' + m.text().slice(0, 400)); });
+  p.on('console', m => { if (['error', 'warning', 'log'].includes(m.type())) logs.push(m.type() + ': ' + m.text().slice(0, 400)); });
   p.on('pageerror', e => logs.push('pageerror: ' + e.message + e.stack.slice(0, 600)));
   await p.route(/fonts\.(googleapis|gstatic)|open-meteo/, r => r.abort());
   const t0 = Date.now();
