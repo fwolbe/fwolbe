@@ -41,13 +41,15 @@ export function paintGround(data, px) {
     g.fillStyle = colour(a.k); g.fill('evenodd');
   }
 
-  // garden plots: each a slightly different sheet of green paper with a pencil edge
+  // gardens: soft, large patches of slightly different green paper (no plot outlines; real
+  // property lines aren't in the open data, so none are drawn)
   const r = rng(11);
-  for (const p of data.plots) {
-    poly(p);
-    g.fillStyle = shade(GROUND.lawn, r() * 1.6 - .3, (r() - .5) * 0.06);
-    g.fill();
-    g.strokeStyle = 'rgba(60,70,30,.35)'; g.lineWidth = 0.35 * S; g.stroke();
+  for (let k = 0; k < 140; k++) {
+    const x = r() * px, y = r() * px, rad = (18 + r() * 40) * S;
+    const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+    const c = shade(GROUND.lawn, r() * 1.4 - .2, (r() - .5) * .05);
+    gr.addColorStop(0, c + '55'); gr.addColorStop(1, c + '00');
+    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
   }
 
   // paths and streams under everything else

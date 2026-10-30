@@ -250,7 +250,7 @@ for i, p in enumerate(plots):
         seg = LineString([a, b])
         if seg.length < 3: continue
         on_road = seg.buffer(2.5).intersects(road_mask)
-        if rng.random() < (0.55 if on_road else 0.28):
+        if on_road and rng.random() < 0.55:
             hedges.append({"p": coords(seg), "h": rnd(0.9 + rng.random() * 1.1, 1), "t": "thuja" if rng.random() < .3 else "leaf"})
     want = int(p.area / 170 * (0.5 + rng.random()) + min(3, canopy_at(p.centroid.x, p.centroid.y) * 2))
     minx, minz, maxx, maxz = inner.bounds
@@ -293,7 +293,7 @@ for a in load("infrastructure"):
             pois.append({"k": "bus_stop", "name": (a.get("names") or {}).get("primary"), "x": rnd(x), "z": rnd(z)})
 
 data = {"origin": {"lat": LAT0, "lon": LON0}, "half": H, "terrain": terrain, "buildings": buildings,
-        "roads": roads, "areas": areas, "trees": trees, "hedges": hedges, "plots": [polys(p)[0]["o"] for p in plots if polys(p)], "pois": pois}
+        "roads": roads, "areas": areas, "trees": trees, "hedges": hedges, "pois": pois}
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 json.dump(data, open(OUT, "w"), separators=(",", ":"))
 print("wrote", OUT, os.path.getsize(OUT) // 1024, "KB")

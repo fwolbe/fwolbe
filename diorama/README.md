@@ -14,7 +14,7 @@ Style reference: *Cardboard Racer*, zoomed out from track scale to neighbourhood
 | Sun position, sunrise and sunset | Computed (SunCalc formulas) | Always in Jönköping time (Europe/Stockholm) |
 | Weather | [Open-Meteo](https://open-meteo.com) current conditions (MET Nordic) | Only when the page is hosted normally; the claude.ai artifact sandbox blocks the request |
 | Leaf colour | The real date | Spring, summer, autumn or bare |
-| **Approximated:** garden plots, hedges, most garden trees | Derived | Voronoi cells of houses inside each street block; hedges and trees placed per plot |
+| **Approximated:** hedges and most garden trees | Derived | Hedges only along street frontages; garden trees spread per house within each street block. Real property lines are not in the open data, so none are drawn |
 | **Approximated:** roof shapes and colours, wall colours, heights | Derived | From footprint shape and size; colours are a plausible Swedish mix, not observed |
 | **Simulated:** traffic | Simulated | Car count follows a weekday/weekend time-of-day curve |
 
@@ -32,7 +32,7 @@ npm install && node scripts/build.mjs    # -> dist/index.html (standalone), dist
 
 `config.json`, the raw downloads and the built data stay out of git because they pin a home location.
 
-Styles: cardboard, architect's white model and needle felt (◧ Model menu, or `?style=white|felt`). The plate can be cropped around home from 80 m to the full 520 m, square or round (`?crop=120&shape=round`, crop is the half-size in metres).
+Styles: cardboard, architect's white model and needle felt (◧ Model menu, or `?style=white|felt`). The plate can be cropped around home from 80 m to the full 520 m, square or round; the default is a 240 m round plate with a smooth surface (`?crop=120&shape=round`, crop is the half-size in metres).
 
 URL options on the standalone page: `?t=16:30` fixes the time, `?weather=snow|rain|fog|clear|partly|cloudy|storm`, `?view=home|street|top|overview`, `?step=3` (contour layer in metres, `0` = smooth), `?exag=1.5`, `?tilt=0`.
 

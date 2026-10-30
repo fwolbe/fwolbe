@@ -29,10 +29,10 @@ const BASE = 10;
 const state = {
   live: true, time: new Date(), lapse: false,
   weatherMode: params.get('weather') || 'live', live_w: null, weather: { ...PRESETS.partly },
-  step: Number(params.get('step') ?? 3), exag: Number(params.get('exag') ?? 1.5),
-  tilt: params.get('tilt') !== '0', labels: true, autoRotate: false,
+  step: Number(params.get('step') ?? 0), exag: Number(params.get('exag') ?? 1.5),
+  tilt: params.get('tilt') !== '0', labels: params.get('labels') === '1', autoRotate: false,
   style: STYLES[params.get('style')] != null ? params.get('style') : 'cardboard',
-  crop: Number(params.get('crop') || DATA.half), shape: params.get('shape') === 'round' ? 'round' : 'square',
+  crop: Number(params.get('crop') || 120), shape: params.get('shape') === 'square' ? 'square' : 'round',
 };
 let plate = makePlate(state.shape, state.crop);
 if (params.get('date')) state.time = new Date(params.get('date') + 'T12:00:00Z');
