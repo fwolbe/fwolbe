@@ -78,6 +78,22 @@ with rasterio.open(os.path.join(RAW, "cop30.tif")) as s:
     dem = ndimage.gaussian_filter(dem, 0.6)
     height = ndimage.map_coordinates(dem, [row - 0.5, col - 0.5], order=3, mode="nearest")
 height = ndimage.gaussian_filter(height, 3.0)
+
+# Water is flat: each lake or pond gets one level (a low percentile of the ground under it, since
+# the 30 m surface model blurs shore and water together), and the shore around it stays above it.
+import shapely
+for a in load("water"):
+    try: g = local_geom(a["geometry"])
+    except ValueError: continue
+    if g.geom_type not in ("Polygon", "MultiPolygon") or not g.intersects(CLIP.buffer(40)): continue
+    g = g.buffer(0)
+    inside = shapely.contains_xy(g, gx, gz)
+    if inside.sum() < 4: continue
+    level = float(np.percentile(height[inside], 15))
+    height[inside] = level
+    near = shapely.contains_xy(g.buffer(12), gx, gz) & ~inside
+    ring = shapely.distance(g, shapely.points(gx[near], gz[near]))
+    height[near] = np.maximum(height[near], level + 0.3 + ring * 0.08)
 hmin = float(height.min())
 terrain = {"n": n, "cell": CELL, "size": 2 * H, "min": rnd(hmin), "max": rnd(height.max()),
            "h": [rnd(v - hmin, 2) for v in height.ravel()]}

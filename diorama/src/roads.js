@@ -40,7 +40,10 @@ export function buildRoads(data, field, surf, plate) {
     for (let k = 0; k + 1 < pts.length; k++) {
       const q = [L[k], R[k], R[k + 1], L[k + 1]];
       if (!q.every(inside)) continue;
-      const Y = q.map(p => ry(p[0], p[1]));
+      // the railway bed sits a little below road level, so at level crossings the road is clearly
+      // on top instead of the two flickering at the same height
+      const lift = rd.k === 'rail' ? -.1 : 0;
+      const Y = q.map(p => ry(p[0], p[1]) + lift);
       const v = q.map((p, i) => [p[0], Y[i], p[1]]);
       // two triangles, facing up
       for (const [a, b, d] of [[v[0], v[1], v[2]], [v[0], v[2], v[3]]]) {
@@ -64,6 +67,25 @@ export function buildRoads(data, field, surf, plate) {
       }
     }
   }
+  // steel rails on the railway bed: two thin raised strips 1.435 m apart
+  const rails = [], railN = [];
+  for (const rd of data.roads) {
+    if (rd.k !== 'rail' || rd.p.length < 2) continue;
+    const pts = resample(rd.p, 1.5);
+    for (const off of [-.72, .72]) for (let k = 0; k + 1 < pts.length; k++) {
+      const a = pts[k], b = pts[k + 1];
+      if (!inside(a) || !inside(b)) continue;
+      let dx = b[0] - a[0], dz = b[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      const nx = -dz, nz = dx, w = .06;
+      const P = (p, s) => [p[0] + nx * (off + s * w), ry(p[0], p[1]) + .12, p[1] + nz * (off + s * w)];
+      const q = [P(a, -1), P(a, 1), P(b, 1), P(b, -1)];
+      for (const [i, j, m] of [[0, 1, 2], [0, 2, 3]]) {
+        const tri = [q[i], q[j], q[m]], e1 = [tri[1][0] - tri[0][0], tri[1][2] - tri[0][2]], e2 = [tri[2][0] - tri[0][0], tri[2][2] - tri[0][2]];
+        if (e1[1] * e2[0] - e1[0] * e2[1] < 0) [tri[1], tri[2]] = [tri[2], tri[1]];
+        for (const p of tri) { rails.push(...p); railN.push(0, 1, 0); }
+      }
+    }
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(top, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(topN, 3));
@@ -84,6 +106,12 @@ export function buildRoads(data, field, surf, plate) {
   const skirts = new THREE.Mesh(sg, skirtMat);
   skirts.receiveShadow = true; skirts.castShadow = true;
   const group = new THREE.Group(); group.add(roads, skirts);
+  if (rails.length) {
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute(rails, 3));
+    rg.setAttribute('normal', new THREE.Float32BufferAttribute(railN, 3));
+    group.add(new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ color: '#5d6066', roughness: .4, metalness: .6, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 })));
+  }
   return { group, roadMat };
 }
 
