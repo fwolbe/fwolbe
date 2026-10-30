@@ -358,14 +358,18 @@ function houseExtras(b, eave, yGround, surf) {
       box(.14, eave - y, .14, ss * L - ss * .07, tt * (W - n.dt) + tt * .07, y, '#f4f3ee');
     } else if (e.type === 'deck') {
       // raised wooden deck on the slope, closed with weathered board screens
-      const y = yGround + e.y, wood = '#8e8173', s0 = e.s - e.w / 2, s1 = e.s + e.w / 2, t1 = e.t + e.d / 2;
+      // screens on every side except the one against the house (e.open)
+      const y = yGround + e.y, wood = '#8e8173', post = '#6f6255';
+      const s0 = e.s - e.w / 2, s1 = e.s + e.w / 2, t0 = e.t - e.d / 2, t1 = e.t + e.d / 2;
       box(e.w, .14, e.d, e.s, e.t, y - .14, '#8a7a68');
-      const low = Math.min(surf(...at(s0, t1)), surf(...at(s1, t1)), surf(...at(s1, e.t))) - .3;
-      box(e.w, y + 1.15 - low, .08, e.s, t1, low, wood);
-      box(.08, y + 1.15 - low, e.d, s1, e.t, low, wood);
-      box(.08, y + 1.15 - low, e.d, s0, e.t, low, wood);
-      for (let k = 0; k <= 6; k++) box(.14, y + 1.25 - low, .14, s0 + k * e.w / 6, t1 + .05, low, '#6f6255');
-      box(e.w + .1, .1, .12, e.s, t1 + .02, y + 1.15, '#6f6255');
+      const low = Math.min(...[[s0, t0], [s1, t0], [s0, t1], [s1, t1]].map(p => surf(...at(...p)))) - .3, hgt = y + 1.15 - low;
+      const sides = { south: [e.w, .08, e.s, t1, 'x'], north: [e.w, .08, e.s, t0, 'x'], east: [.08, e.d, s1, e.t, 'z'], west: [.08, e.d, s0, e.t, 'z'] };
+      for (const [name, [sx, sz, s, t, dir]] of Object.entries(sides)) {
+        if (name === e.open) continue;
+        box(sx, hgt, sz, s, t, low, wood);
+        const n = Math.max(2, Math.round((dir === 'x' ? e.w : e.d) / 1.1));
+        for (let k = 0; k <= n; k++) box(.14, hgt + .1, .14, dir === 'x' ? s0 + k * e.w / n : s, dir === 'x' ? t : t0 + k * e.d / n, low, post);
+      }
     } else if (e.type === 'awning') {
       // grey fabric awnings over the windows of one face, k-th window counted from its west/north end
       const ws = b.walls || [[-len / 2, -wid / 2], [len / 2, -wid / 2], [len / 2, wid / 2], [-len / 2, wid / 2]];

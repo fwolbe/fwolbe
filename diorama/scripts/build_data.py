@@ -148,25 +148,22 @@ OVERRIDES = {
         {"dx": 2.05, "dz": 7.65, "len": 17.5, "wid": 7.5, "ang": 0, "eave": 3.8, "pitch": 0, "roof": "flat"},
     ],
     # 31B, from street-level and drone photos: two storeys on a dark plinth, light greige render,
-    # grey window surrounds and grey awnings, an anthracite hip roof with a street-side dormer and
-    # two chimneys, a flat canopy over the double front door, a two-storey loggia cut into the
-    # south-east corner (balcony above, covered patio below), a raised wooden deck with screens
-    # south of it, and a freestanding pergola over the steps south-west of the house.
+    # grey window surrounds, an anthracite hip roof with a street-side dormer and two chimneys,
+    # a flat canopy over the double front door, a two-storey loggia cut into the south-east corner
+    # and opening east (balcony above, covered patio below), a raised wooden deck with screens in
+    # front of it to the east, and a freestanding pergola over the steps south-west of the house.
     # Extras are placed in the box's frame: s along its length (east), t across it (south).
     "w1179895567": [
         {"own": True, "eave": 6.3, "pitch": 27, "roof": "hip", "kind": "custom", "rc": "anthracite", "wc": "greige", "seed": 20.4,
-         "gref": [-6.0, 0.0], "notch": {"corner": "se", "ds": 4.4, "dt": 1.9},
+         "gref": [-6.0, 0.0], "notch": {"corner": "se", "ds": 1.9, "dt": 4.4},
          "extras": [
              {"type": "dormer", "s": -3.6, "t": 0.0, "w": 1.9},
              {"type": "chimney", "s": 0.4, "t": -1.4, "w": .9, "up": .9},
              {"type": "chimney", "s": -1.4, "t": -2.2, "w": .55, "up": .6, "vane": True},
              {"type": "canopy", "s": -6.06, "t": 0.0, "w": 3.2, "d": 1.4, "y": 3.1},
              {"type": "loggia", "y": 3.3},
-             {"type": "deck", "s": 2.9, "t": 8.2, "w": 6.6, "d": 4.6, "y": .55},
+             {"type": "deck", "s": 8.36, "t": 4.3, "w": 4.6, "d": 6.2, "y": .55, "open": "west"},
              {"type": "pergola", "s": -7.6, "t": 9.0, "w": 4.2, "d": 3.2, "y": 2.5},
-             {"type": "awning", "face": "west", "k": [0, 2], "floor": 0},
-             {"type": "awning", "face": "south", "k": [0, 1], "floor": 0},
-             {"type": "awning", "face": "south", "k": [0], "floor": 1},
          ],
          # the garden as photographed: clear the random filler, keep it mostly lawn, add the
          # row of columnar conifers and the red Japanese maples by the front door
