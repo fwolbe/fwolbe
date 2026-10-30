@@ -100,6 +100,7 @@ def pick(table, u):
     return table[-1][0]
 
 buildings = []
+raw_ids = []
 fp_union = []
 for b in load("building"):
     if b.get("is_underground"): continue
@@ -132,7 +133,37 @@ for b in load("building"):
            "rc": pick(ROOF_COLOURS, h01(b["id"] + "r")), "wc": pick(WALL_COLOURS, h01(b["id"] + "w")),
            "seed": rnd(u, 4)}
     if kind == "church": rec["rc"], rec["wc"] = "copper", "brick"
-    if rec["fp"]: buildings.append(rec)
+    if rec["fp"]:
+        buildings.append(rec); raw_ids.append(b["sources"][0].get("record_id", "").split("@")[0])
+# Hand-modelled buildings: footprints alone can't say how a building is roofed. Parts are boxes
+# relative to the footprint centroid (dx east, dz south, metres); ridges run along "len".
+OVERRIDES = {
+    # Bymarkskyrkan, from street-level photos: white rendered walls on a dark plinth, steep
+    # red-brown tile gables, a taller west part, a lower east part, a gabled north porch,
+    # a flat-roofed annex to the south, no tower.
+    "w149877159": [
+        {"dx": -5.35, "dz": -2.6, "len": 12.5, "wid": 12.4, "ang": 0, "eave": 6.6, "pitch": 54, "roof": "gable", "vanes": True, "chimney": True},
+        {"dx": 5.15, "dz": -2.15, "len": 8.5, "wid": 12.1, "ang": 0, "eave": 4.8, "pitch": 52, "roof": "gable", "vanes": True},
+        {"dx": .55, "dz": -11.3, "len": 5.4, "wid": 5.9, "ang": 1.5708, "eave": 3.6, "pitch": 52, "roof": "gable", "vanes": True},
+        {"dx": 2.05, "dz": 7.65, "len": 17.5, "wid": 7.5, "ang": 0, "eave": 3.8, "pitch": 0, "roof": "flat"},
+    ],
+}
+for src, parts in OVERRIDES.items():
+    hit = next((i for i, b in enumerate(raw_ids) if b == src), None)
+    if hit is None: continue
+    base = buildings[hit]
+    c = Polygon(base["fp"]).centroid
+    del buildings[hit]; del raw_ids[hit]
+    for k, pt in enumerate(parts):
+        cx, cz = c.x + pt["dx"], c.y + pt["dz"]
+        rec = {"id": f'{base["id"]}-{k}', "kind": "chapel", "eave": pt["eave"], "pitch": pt["pitch"], "roof": pt["roof"], "rect": 1.0,
+               "obb": {"cx": rnd(cx), "cz": rnd(cz), "len": pt["len"], "wid": pt["wid"], "ang": pt["ang"]},
+               "rc": "redtile", "wc": "white", "seed": 10 + k * .1, "g": [rnd(c.x), rnd(c.y)],
+               "vanes": pt.get("vanes", False), "chimney": pt.get("chimney", False), "name": base.get("name")}
+        L, W, a = pt["len"] / 2, pt["wid"] / 2, pt["ang"]
+        ux, uz, vx, vz = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
+        rec["fp"] = [[rnd(cx + sx * ux * L + sy * vx * W), rnd(cz + sx * uz * L + sy * vz * W)] for sx, sy in [(-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1)]]
+        buildings.append(rec); raw_ids.append(src)
 fp = prep(unary_union(fp_union).buffer(1.0))
 print("buildings", len(buildings))
 
@@ -222,7 +253,7 @@ road_mask = unary_union([LineString(r["p"]).buffer(r["w"] / 2 + 0.8, cap_style=2
                          if r["k"] not in ("footway", "path", "steps", "stream") and len(r["p"]) > 1])
 blocks = CLIP.difference(road_mask)
 blocks = [b for b in getattr(blocks, "geoms", [blocks]) if b.area > 200]
-homes = [b for b in buildings if b["kind"] in ("house", "block", "church")]
+homes = [b for b in buildings if b["kind"] in ("house", "block", "church") or b["id"].endswith("-0")]
 cells = voronoi_diagram(MultiPoint([(b["obb"]["cx"], b["obb"]["cz"]) for b in homes]), envelope=CLIP.buffer(50))
 plots = []
 for blk in blocks:

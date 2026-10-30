@@ -235,7 +235,7 @@ const labels = (() => {
     for (const p of DATA.pois) {
       if (p.k === 'home') continue;
       if (p.k === 'place' && plate.inside(p.x, p.z, 4)) {
-        const b = info.find(i => i.b.kind === 'church');
+        const b = info.find(i => i.b.kind === 'church' || (i.b.kind === 'chapel' && i.b.id.endsWith('-0')));
         const pos = p.name === 'Bymarkskyrkan' && b ? new THREE.Vector3(b.b.obb.cx, b.top + 4, b.b.obb.cz) : new THREE.Vector3(p.x, surf(p.x, p.z) + 6, p.z);
         add(p.name, 'poi', pos);
       }
@@ -400,6 +400,11 @@ function flyTo(kind) {
 camera.position.copy(look).add(sph({ az: .2, pol: .35, dist: 1500 }));
 if (params.get('view')) flyTo(params.get('view')); else flyTo('overview');
 if (params.has('shot')) { fly.t = fly.dur; }
+if (params.get('cam')) {
+  // debug: ?cam=x,z,height,tx,tz puts the camera at a ground point looking at another
+  const [x, z, h, tx, tz] = params.get('cam').split(',').map(Number);
+  fly = null; camera.position.set(x, surf(x, z) + h, z); controls.target.set(tx, surf(tx, tz) + 4, tz);
+}
 controls.addEventListener('start', () => { fly = null; });
 
 const clock = new THREE.Clock();

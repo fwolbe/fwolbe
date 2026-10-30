@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { cardboard } from './materials.js';
 
 const WALL = { white: '#f2ede2', cream: '#efdfba', yellow: '#e8c063', falu: '#a8432f', grey: '#bdb9ae', blue: '#93abc0', green: '#a1b28e', brick: '#a65a3e' };
-const ROOF = { tile: '#c4643a', darktile: '#8e3f2b', black: '#3d3c3f', grey: '#727579', copper: '#6f9c87' };
+const ROOF = { tile: '#c4643a', darktile: '#8e3f2b', black: '#3d3c3f', grey: '#727579', copper: '#6f9c87', redtile: '#9a4630' };
 const TRIM = '#f6f1e6';
 
 // Window pattern and lit windows at night, drawn on the walls from a per-vertex wall coordinate.
@@ -11,6 +11,14 @@ const WIN_GLSL = /* glsl */`
   varying vec4 vWall;
   float winMask(vec4 w, out float id){
     float u = w.x, v = w.y, len = mod(w.z, 1000.), cap = floor(w.z / 1000.) * .1;
+    if (w.w > 9.) {
+      // church: one row of tall round-arched windows
+      float n2 = max(1., floor(len / 3.2)), sp2 = len / n2, dx = abs(u - (floor(u / sp2) + .5) * sp2);
+      id = floor(u / sp2) * 7.13 + w.w * 91.7;
+      float body = step(dx, .5) * step(1.5, v) * step(v, 3.0);
+      float arch = step(3.0, v) * step(length(vec2(dx, v - 3.0)), .5);
+      return max(body, arch) * step(3.6, cap) * step(2.5, len);
+    }
     float n = max(1., floor(len / 3.4));
     float sp = len / n;
     float cu = (floor(u / sp) + .5) * sp;
@@ -136,7 +144,7 @@ export function buildBuildings(data, surf, inside = () => true) {
     if (pts.length < 3) continue;
     const ys = pts.map(p => surf(p[0], p[1]));
     const yMin = Math.min(...ys), yMax = Math.max(...ys);
-    const yGround = surf(b.obb.cx, b.obb.cz);
+    const yGround = b.g ? surf(b.g[0], b.g[1]) : surf(b.obb.cx, b.obb.cz);
     let eave = yGround + b.eave;
     eave = Math.max(eave, yMax + 2.4);
     const base = yMin - 0.4;
@@ -150,7 +158,7 @@ export function buildBuildings(data, surf, inside = () => true) {
       addWallQuad(walls, a, q, base, eave, yGround, seed + k * 0.13, eave);
     }
     c.set(WALL[b.wc] || WALL.white);
-    c.offsetHSL(0, 0, (seed - .5) * .06);
+    c.offsetHSL(0, 0, (seed % 1 - .5) * .06);
     for (let k = before; k < walls.pos.length; k += 3) walls.col.push(c.r, c.g, c.b);
 
     const centre = new THREE.Vector3(b.obb.cx, eave - 5, b.obb.cz);
@@ -172,7 +180,7 @@ export function buildBuildings(data, surf, inside = () => true) {
       trimGeoms.push(fg);
       if (r.fascia.length) {
         const gg = triGeom(r.fascia, new THREE.Vector3(b.obb.cx, eave, b.obb.cz));
-        const wc = new THREE.Color(WALL[b.wc] || WALL.white).offsetHSL(0, 0, (seed - .5) * .06);
+        const wc = new THREE.Color(WALL[b.wc] || WALL.white).offsetHSL(0, 0, (seed % 1 - .5) * .06);
         setColour(gg, '#' + wc.getHexString(), 0.5);
         trimGeoms.push(gg);
       }
@@ -208,6 +216,7 @@ export function buildBuildings(data, surf, inside = () => true) {
       roofGeoms.push(...t.roofs); trimGeoms.push(...t.walls);
       top = Math.max(top, t.top);
     }
+    if (b.vanes || b.chimney) roofGeoms.push(...chapelDetails(b, eave));
     info.push({ b, ground: yGround, top, eave });
   }
 
@@ -228,8 +237,10 @@ export function buildBuildings(data, surf, inside = () => true) {
       vec3 glass = mix(vec3(.17, .22, .28), vec3(.98, .78, .42), lit * uNight);
       float frame = wm;
       diffuseColor.rgb = mix(diffuseColor.rgb, glass, frame);
-      float baseBand = 1. - step(0.3, vWall.y);
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.55, .53, .5), baseBand * .85);
+      // plinth: the church has a tall dark-painted one
+      bool chapel = vWall.w > 9.;
+      float baseBand = 1. - step(chapel ? .75 : .3, vWall.y);
+      diffuseColor.rgb = mix(diffuseColor.rgb, chapel ? vec3(.2, .21, .23) : vec3(.55, .53, .5), baseBand * .9);
     `,
     emissiveBody: `
       float wid2; float wm2 = winMask(vWall, wid2);
@@ -262,10 +273,30 @@ function clean(g) {
 }
 
 function setColour(g, hex, seed) {
-  const c = new THREE.Color(hex).offsetHSL(0, 0, (seed - .5) * .07);
+  const c = new THREE.Color(hex).offsetHSL(0, 0, (seed % 1 - .5) * .07);
   const n = g.attributes.position.count, a = new Float32Array(n * 3);
   for (let k = 0; k < n; k++) { a[k * 3] = c.r; a[k * 3 + 1] = c.g; a[k * 3 + 2] = c.b; }
   g.setAttribute('color', new THREE.BufferAttribute(a, 3));
+}
+
+// Iron crosses on the gable peaks and a rendered chimney, as on Bymarkskyrkan.
+function chapelDetails(b, eave) {
+  const { cx, cz, len, wid, ang } = b.obb;
+  const ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+  const tan = Math.tan(THREE.MathUtils.degToRad(b.pitch)), ridge = eave + (wid / 2) * tan;
+  const out = [];
+  const put = (g, s, t, y, colour) => { g = g.toNonIndexed(); g.rotateY(-ang); g.translate(cx + ux * s + vx * t, y, cz + uz * s + vz * t); setColour(g, colour, .5); out.push(g); };
+  if (b.vanes) for (const end of [-1, 1]) {
+    const s = end * (len / 2 + .3);
+    put(new THREE.BoxGeometry(.12, 1.8, .12), s, 0, ridge + .9, '#2a2826');
+    put(new THREE.BoxGeometry(.12, .12, .8), s, 0, ridge + 1.25, '#2a2826');
+  }
+  if (b.chimney) {
+    const s = len * .18, t = -wid * .16, yRoof = eave + (wid / 2 - Math.abs(t)) * tan;
+    const h = ridge + .5 - yRoof + 1;
+    put(new THREE.BoxGeometry(.9, h, .9), s, t, yRoof - 1 + h / 2, '#3b3b3e');
+  }
+  return out;
 }
 
 function churchTower(b, eave, surf) {
