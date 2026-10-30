@@ -60,6 +60,13 @@ function rectPts(b, o = 0) {
     [cx + ux * L + vx * W, cz + uz * L + vz * W], [cx - ux * L + vx * W, cz - uz * L + vz * W]];
 }
 
+// a building's own frame: s along its length, t across it
+function frame(b) {
+  const { cx, cz, ang } = b.obb, ux = Math.cos(ang), uz = Math.sin(ang), vx = -uz, vz = ux;
+  const at = (s, t) => [cx + ux * s + vx * t, cz + uz * s + vz * t];
+  return { at, list: (st) => st.map(([s, t]) => at(s, t)) };
+}
+
 function pushTri(arr, a, b, c) {
   // flat triangle; orient so the normal faces away from the building centre / upward
   arr.push(...a, ...b, ...c);
@@ -140,7 +147,7 @@ export function buildBuildings(data, surf, inside = () => true) {
   for (const b of data.buildings) {
     if (!rectPts(b, .4).every(p => inside(p[0], p[1]))) continue;
     const pitched = b.roof !== 'flat' && b.rect > 0.76;
-    const pts = pitched ? rectPts(b) : b.fp.slice(0, b.fp.length - 1);
+    const pts = pitched ? (b.walls ? frame(b).list(b.walls) : rectPts(b)) : b.fp.slice(0, b.fp.length - 1);
     if (pts.length < 3) continue;
     const ys = pts.map(p => surf(p[0], p[1]));
     const yMin = Math.min(...ys), yMax = Math.max(...ys);
@@ -315,7 +322,7 @@ function houseExtras(b, eave, yGround, surf) {
   const at = (s, t) => [cx + ux * s + vx * t, cz + uz * s + vz * t];
   // hip roof height over a point: limited by the nearest eave line
   const roofY = (s, t) => eave + Math.max(0, Math.min(len / 2 - Math.abs(s), wid / 2 - Math.abs(t))) * tan;
-  const out = [];
+  const out = [], outList = out;
   const box = (sx, sy, sz, s, t, y, colour) => {
     const g = new THREE.BoxGeometry(sx, sy, sz).toNonIndexed(); g.rotateY(-ang);
     const [x, z] = at(s, t); g.translate(x, y + sy / 2, z); setColour(g, colour, .5); out.push(g);
@@ -337,8 +344,46 @@ function houseExtras(b, eave, yGround, surf) {
       box(e.d, .16, e.w, e.s - e.d / 2, e.t, y, '#2f3236');
       for (const tt of [-1, 1]) box(.12, e.y, .12, e.s - e.d + .15, e.t + tt * (e.w / 2 - .2), yGround - .3, '#4a4e54');
       box(1.4, .5, e.w * .8, e.s - .7, e.t, yGround - .4, '#6d6e70');
+    } else if (e.type === 'loggia' && b.notch) {
+      // two-storey corner loggia: balcony slab with a white board railing, posts, a ceiling
+      const n = b.notch, ss = n.corner.includes('e') ? 1 : -1, tt = n.corner.includes('s') ? 1 : -1;
+      const L = len / 2, W = wid / 2, sc = ss * (L - n.ds / 2), tc = tt * (W - n.dt / 2), y = yGround + e.y;
+      box(n.ds, .2, n.dt, sc, tc, y, '#ecebe6');
+      box(n.ds, .16, n.dt, sc, tc, eave - .16, '#f2f1ec');
+      box(n.ds, 1.0, .06, sc, tt * W, y + .2, '#f4f3ee');
+      box(.06, 1.0, n.dt, ss * L, tc, y + .2, '#f4f3ee');
+      const yb = surf(...at(ss * L, tt * W)) - .5;
+      box(.14, eave - yb, .14, ss * L - ss * .07, tt * W - tt * .07, yb, '#f4f3ee');
+      box(.14, eave - yb, .14, ss * (L - n.ds) + ss * .07, tt * W - tt * .07, yb, '#f4f3ee');
+      box(.14, eave - y, .14, ss * L - ss * .07, tt * (W - n.dt) + tt * .07, y, '#f4f3ee');
+    } else if (e.type === 'deck') {
+      // raised wooden deck on the slope, closed with weathered board screens
+      const y = yGround + e.y, wood = '#8e8173', s0 = e.s - e.w / 2, s1 = e.s + e.w / 2, t1 = e.t + e.d / 2;
+      box(e.w, .14, e.d, e.s, e.t, y - .14, '#8a7a68');
+      const low = Math.min(surf(...at(s0, t1)), surf(...at(s1, t1)), surf(...at(s1, e.t))) - .3;
+      box(e.w, y + 1.15 - low, .08, e.s, t1, low, wood);
+      box(.08, y + 1.15 - low, e.d, s1, e.t, low, wood);
+      box(.08, y + 1.15 - low, e.d, s0, e.t, low, wood);
+      for (let k = 0; k <= 6; k++) box(.14, y + 1.25 - low, .14, s0 + k * e.w / 6, t1 + .05, low, '#6f6255');
+      box(e.w + .1, .1, .12, e.s, t1 + .02, y + 1.15, '#6f6255');
+    } else if (e.type === 'awning') {
+      // grey fabric awnings over the windows of one face, k-th window counted from its west/north end
+      const ws = b.walls || [[-len / 2, -wid / 2], [len / 2, -wid / 2], [len / 2, wid / 2], [-len / 2, wid / 2]];
+      const vert = e.face === 'west' || e.face === 'east';
+      const edge = e.face === 'west' ? Math.min(...ws.map(p => p[0])) : e.face === 'east' ? Math.max(...ws.map(p => p[0]))
+        : e.face === 'north' ? Math.min(...ws.map(p => p[1])) : Math.max(...ws.map(p => p[1]));
+      const on = ws.filter(p => Math.abs((vert ? p[0] : p[1]) - edge) < .01).map(p => vert ? p[1] : p[0]);
+      const a = Math.min(...on), fl = Math.max(...on) - a, n = Math.max(1, Math.floor(fl / 3.4)), out = Math.sign(edge);
+      const y = yGround + e.floor * 3 + 2.3;
+      for (const k of e.k) {
+        const c = a + (k + .5) * fl / n;
+        const g = new THREE.BoxGeometry(vert ? 1.0 : 1.8, .08, vert ? 1.8 : 1.0).toNonIndexed();
+        if (vert) g.rotateZ(out * .5); else g.rotateX(-out * .5);
+        const [x, z] = vert ? at(edge + out * .45, c) : at(c, edge + out * .45);
+        g.rotateY(-ang); g.translate(x, y, z); setColour(g, '#5f6368', .5); outList.push(g);
+      }
     } else if (e.type === 'pergola') {
-      const [x, z] = at(e.s, e.t), y0 = surf(x, z), wood = '#8b6b4b';
+      const [x, z] = at(e.s, e.t), y0 = surf(x, z), wood = '#a49b8d';
       for (const ss of [-1, 1]) for (const tt of [-1, 1]) box(.16, e.y, .16, e.s + ss * (e.w / 2 - .2), e.t + tt * (e.d / 2 - .2), y0, wood);
       for (const tt of [-1, 1]) box(e.w, .2, .14, e.s, e.t + tt * (e.d / 2 - .2), y0 + e.y - .2, wood);
       for (let k = -e.w / 2 + .3; k <= e.w / 2 - .3; k += .55) box(.08, .12, e.d + .3, e.s + k, e.t, y0 + e.y, wood);

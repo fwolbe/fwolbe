@@ -147,20 +147,26 @@ OVERRIDES = {
         {"dx": .55, "dz": -11.3, "len": 5.4, "wid": 5.9, "ang": 1.5708, "eave": 3.6, "pitch": 52, "roof": "gable", "vanes": True},
         {"dx": 2.05, "dz": 7.65, "len": 17.5, "wid": 7.5, "ang": 0, "eave": 3.8, "pitch": 0, "roof": "flat"},
     ],
-    # 31B, from street-level photos and an aerial: two storeys on a dark plinth, light greige render,
-    # grey window surrounds, an anthracite hip roof with a street-side dormer and two chimneys,
-    # a flat canopy over the double front door, a pergola and an upper balcony to the south.
+    # 31B, from street-level and drone photos: two storeys on a dark plinth, light greige render,
+    # grey window surrounds and grey awnings, an anthracite hip roof with a street-side dormer and
+    # two chimneys, a flat canopy over the double front door, a two-storey loggia cut into the
+    # south-east corner (balcony above, covered patio below), a raised wooden deck with screens
+    # south of it, and a freestanding pergola over the steps south-west of the house.
     # Extras are placed in the box's frame: s along its length (east), t across it (south).
     "w1179895567": [
         {"own": True, "eave": 6.3, "pitch": 27, "roof": "hip", "kind": "custom", "rc": "anthracite", "wc": "greige", "seed": 20.4,
-         "gref": [-6.0, 0.0],
+         "gref": [-6.0, 0.0], "notch": {"corner": "se", "ds": 4.4, "dt": 1.9},
          "extras": [
              {"type": "dormer", "s": -3.6, "t": 0.0, "w": 1.9},
              {"type": "chimney", "s": 0.4, "t": -1.4, "w": .9, "up": .9},
              {"type": "chimney", "s": -1.4, "t": -2.2, "w": .55, "up": .6, "vane": True},
              {"type": "canopy", "s": -6.06, "t": 0.0, "w": 3.2, "d": 1.4, "y": 3.1},
-             {"type": "pergola", "s": -2.6, "t": 7.6, "w": 7.0, "d": 3.4, "y": 2.6},
-             {"type": "balcony", "s": 4.4, "t": 6.4, "w": 3.0, "d": 1.2, "y": 3.3},
+             {"type": "loggia", "y": 3.3},
+             {"type": "deck", "s": 2.9, "t": 8.2, "w": 6.6, "d": 4.6, "y": .55},
+             {"type": "pergola", "s": -7.6, "t": 9.0, "w": 4.2, "d": 3.2, "y": 2.5},
+             {"type": "awning", "face": "west", "k": [0, 2], "floor": 0},
+             {"type": "awning", "face": "south", "k": [0, 1], "floor": 0},
+             {"type": "awning", "face": "south", "k": [0], "floor": 1},
          ],
          # the garden as photographed: clear the random filler, keep it mostly lawn, add the
          # row of columnar conifers and the red Japanese maples by the front door
@@ -187,6 +193,16 @@ for src, parts in OVERRIDES.items():
                "rc": pt.get("rc", "redtile"), "wc": pt.get("wc", "white"), "seed": pt.get("seed", 10 + k * .1),
                "g": [rnd(cx + g[0]), rnd(cz + g[1])] if "gref" in pt else [rnd(c.x), rnd(c.y)],
                "vanes": pt.get("vanes", False), "chimney": pt.get("chimney", False), "extras": pt.get("extras", []), "name": base.get("name")}
+        if "notch" in pt:
+            # walls follow the box with one corner cut out (the roof still covers it)
+            n, L2, W2 = pt["notch"], pt["len"] / 2, pt["wid"] / 2
+            ss, tt = (1 if "e" in n["corner"] else -1), (1 if "s" in n["corner"] else -1)
+            walls = [[-L2, -W2], [L2, -W2], [L2, W2], [-L2, W2]]
+            i = walls.index([ss * L2, tt * W2])
+            cut = [[ss * L2, tt * (W2 - n["dt"])], [ss * (L2 - n["ds"]), tt * (W2 - n["dt"])], [ss * (L2 - n["ds"]), tt * W2]]
+            if (ss * tt) < 0: cut = cut[::-1]
+            rec["walls"] = [[rnd(a), rnd(b)] for a, b in walls[:i] + cut + walls[i + 1:]]
+            rec["notch"] = n
         L, W, a = pt["len"] / 2, pt["wid"] / 2, pt["ang"]
         ux, uz, vx, vz = math.cos(a), math.sin(a), -math.sin(a), math.cos(a)
         rec["fp"] = [[rnd(cx + sx * ux * L + sy * vx * W), rnd(cz + sx * uz * L + sy * vz * W)] for sx, sy in [(-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1)]]
