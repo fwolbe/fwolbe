@@ -12,6 +12,10 @@
 //   OPERATOR          default operator, e.g. "jlt", "sl", "ul", "skane", "otraf"       (var)
 //   RADIUS_M          default radius in metres, 1500                                  (var)
 //   CACHE_S           seconds to reuse one operator's feed, default 20                 (var)
+//   TRAFIKVERKET_KEY  Trafikverket open API key, for /trains                          (secret)
+//   TRAIN_RADIUS_M    how far out to include trains, default 4000                      (var)
+//
+//   GET /trains?site=<site>   live train positions near the site (Trafikverket TrainPosition)
 import { decodeVehiclePositions } from './gtfsrt.js';
 
 const FEED = (op, key) => `https://opendata.samtrafiken.se/gtfs-rt/${op}/VehiclePositions.pb?key=${encodeURIComponent(key)}`;
@@ -55,6 +59,7 @@ export default {
   async fetch(req, env, ctx) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(req.url);
+    if (url.pathname === '/trains') return trains(req, env, ctx, url);
     if (url.pathname !== '/buses') return new Response('Not found', { status: 404, headers: CORS });
     if (!env.TRAFIKLAB_RT_KEY) return json({ error: 'relay not configured: set TRAFIKLAB_RT_KEY' }, 500);
     const site = siteConfig(env, url.searchParams.get('site'));
@@ -68,3 +73,39 @@ export default {
     return json({ fetched: feed.fetched, total: feed.all.length, buses }, 200, { 'Cache-Control': 'no-store' });
   },
 };
+
+// Trains: Trafikverket's TrainPosition (GPS positions of trains on the Swedish network), filtered
+// on their side to a circle around the site. Speed arrives in km/h and is returned in m/s.
+const TV_URL = 'https://api.trafikinfo.trafikverket.se/v2/data.json';
+async function trains(req, env, ctx, url) {
+  if (!env.TRAFIKVERKET_KEY) return json({ error: 'relay not configured: set TRAFIKVERKET_KEY' }, 500);
+  const site = siteConfig(env, url.searchParams.get('site'));
+  if (site.error) return json({ error: site.error }, 400);
+  const [lat, lon] = site.center.split(',').map(Number), radius = Number(env.TRAIN_RADIUS_M || 4000);
+  const cache = caches.default, key = new Request(`${url.origin}/trains-cache/${lat.toFixed(4)},${lon.toFixed(4)},${radius}`);
+  const hit = await cache.match(key);
+  if (hit) return new Response(hit.body, { headers: { 'Content-Type': 'application/json', ...CORS } });
+  const body = `<REQUEST><LOGIN authenticationkey="${env.TRAFIKVERKET_KEY}"/>` +
+    `<QUERY objecttype="TrainPosition" namespace="järnväg.trafikinfo" schemaversion="${env.TV_SCHEMA || '1.1'}">` +
+    `<FILTER><AND><EQ name="Status.Active" value="true"/>` +
+    `<WITHIN name="Position.WGS84" shape="center" value="${lon} ${lat}" radius="${radius}m"/></AND></FILTER>` +
+    `</QUERY></REQUEST>`;
+  const up = await fetch(TV_URL, { method: 'POST', headers: { 'Content-Type': 'text/xml' }, body });
+  if (!up.ok) return json({ error: `trafikverket ${up.status}`, detail: (await up.text()).slice(0, 300) }, 502);
+  const res = (await up.json()).RESPONSE?.RESULT?.[0] || {};
+  if (res.ERROR) return json({ error: 'trafikverket', detail: res.ERROR }, 502);
+  const out = [];
+  for (const t of res.TrainPosition || []) {
+    const m = /POINT \(([-\d.]+) ([-\d.]+)\)/.exec(t.Position?.WGS84 || '');
+    if (!m) continue;
+    out.push({
+      id: String(t.Train?.OperationalTrainNumber || t.Train?.AdvertisedTrainNumber || ''),
+      number: t.Train?.AdvertisedTrainNumber ?? null,
+      lat: Number(m[2]), lon: Number(m[1]), bearing: t.Bearing ?? null,
+      speed: t.Speed != null ? t.Speed / 3.6 : null, ts: t.TimeStamp ? Math.floor(Date.parse(t.TimeStamp) / 1000) : null,
+    });
+  }
+  const resp = json({ fetched: Math.floor(Date.now() / 1000), trains: out }, 200, { 'Cache-Control': `public, max-age=${Number(env.CACHE_S || 20)}` });
+  ctx.waitUntil(cache.put(key, resp.clone()));
+  return resp;
+}

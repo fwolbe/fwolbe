@@ -42,6 +42,8 @@ export function buildTraffic(graph, field, plate) {
   const beams = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), beamMat, MAX);
   beams.renderOrder = 3;
   const group = new THREE.Group(); group.add(bodies, fixed, heads, tails, beams);
+  // instances drive anywhere on the plate: don't cull them by where the mesh started
+  for (const im of [bodies, fixed, heads, tails, beams]) im.frustumCulled = false;
 
   // only the streets that cross the plate carry traffic; cars enter from beyond its edge
   const all = graph.edges;

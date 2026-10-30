@@ -18,6 +18,7 @@ Style reference: *Cardboard Racer*, zoomed out from track scale to neighbourhood
 | **Approximated:** roof shapes and colours, wall colours, heights | Derived | From footprint shape and size; colours are a plausible Swedish mix, not observed |
 | **Simulated:** traffic | Simulated | Car count follows a weekday/weekend time-of-day curve |
 | Buses | Live vehicle positions (Trafiklab GTFS Regional Realtime, Swedish operators) via `relay/` | Kept on the street network; only in Live time and only on a hosted page |
+| Trains | Live train positions (Trafikverket TrainPosition) via `relay/` | On the mapped railway line, carriages following the track; only in Live time and only on a hosted page |
 
 ## Sites
 

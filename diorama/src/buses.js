@@ -32,9 +32,11 @@ export function buildBuses(data, field, graph, getPlate, relayUrl, siteId) {
   const mat = cardboard(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .7 }), { key: 'bus' });
   const mesh = new THREE.InstancedMesh(busGeometry(), mat, MAX);
   mesh.castShadow = true; mesh.count = 0;
+  mesh.frustumCulled = false;
   const glowMat = new THREE.MeshBasicMaterial({ color: '#ffd890', transparent: true, opacity: 0 });
   const glow = new THREE.InstancedMesh(new THREE.BoxGeometry(10, .7, 2.62).translate(-.6, 2.05, 0), glowMat, MAX);
   glow.count = 0;
+  glow.frustumCulled = false;
   const group = new THREE.Group(); group.add(mesh, glow);
   // ?busdebug: red pins at the raw reported positions, plus a console line per report
   const rawMat = new THREE.MeshBasicMaterial({ color: '#ff2a2a' });

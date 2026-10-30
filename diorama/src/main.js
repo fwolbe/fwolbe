@@ -16,6 +16,7 @@ import { buildTrees, buildHedges } from './trees.js';
 import { buildRoads, roadGraph, buildLamps, roadHeight, ROAD_SNOW } from './roads.js';
 import { buildTraffic } from './cars.js';
 import { buildBuses } from './buses.js';
+import { buildTrains } from './trains.js';
 import { sunPosition, sunDirection, lightingFor, sunEvents } from './sky.js';
 import { buildWeather, PRESETS, fetchLive } from './weather.js';
 import { TiltShiftShader, FinishShader } from './post.js';
@@ -127,7 +128,7 @@ const terrainMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }),
 
 // relay for real-time buses: ?buses=<url>, or busRelay in config.json at build time
 const BUS_RELAY = params.get('buses') || SITE.relay;
-let buses = null;
+let buses = null, trains = null;
 let world = null, field = null, surf = null, traffic = null, lamps = null, roadMat = null, graph = null, home = null;
 function build() {
   if (world) { scene.remove(world); world.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
@@ -159,6 +160,8 @@ function build() {
   traffic = buildTraffic(graph, field, plate); world.add(traffic.group);
   if (buses) buses.dispose();
   buses = buildBuses(DATA, field, graph, () => plate, BUS_RELAY, SITE.transitSite); world.add(buses.group);
+  if (trains) trains.dispose();
+  trains = buildTrains(DATA, field, () => plate, BUS_RELAY, SITE.transitSite); world.add(trains.group);
   home = homeMarker(bld.info); world.add(home.obj);
   world.add(nameplate());
   scene.add(world);
@@ -373,7 +376,8 @@ function frame() {
   weatherFx.update(t, dt, { ...cur, windDir: w.windDir }, (x, z) => (plate.inside(x, z) ? surf(x, z) : plate.bottom));
   traffic.update(state.lapse ? dt * 4 : dt, trafficDensity(state.time), U.uNight.value);
   buses.update(dt, state.live && !state.lapse, U.uNight.value);
-  busLabel(buses.status);
+  trains.update(dt, state.live && !state.lapse, U.uNight.value);
+  busLabel(buses.status, trains.status);
   home.obj.position.y = home.base + Math.sin(t * 1.6) * .8;
   home.pin.rotation.y = t * .8;
   home.pin.material.emissiveIntensity = U.uNight.value * .6;
@@ -412,12 +416,14 @@ window.__diorama = { state, camera, controls, flyTo, renderer, scene };
 
 // bus status under the clock
 let busText = '';
-function busLabel(s) {
+function busLabel(s, tr) {
   const busEl = document.getElementById('bus');
   let t = '';
   if (s.state === 'live') t = state.live && !state.lapse ? `🚌 ${s.near} on the plate · ${s.count} within 1.5 km` : '🚌 live buses only in Live time';
   else if (s.state === 'connecting') t = '🚌 connecting…';
   else if (s.state === 'error') t = '🚌 bus feed unavailable';
+  if (tr && tr.state === 'live' && state.live && !state.lapse) t += `  ·  🚆 ${tr.near} on the plate · ${tr.count} near`;
+  else if (tr && tr.state === 'error') t += '  ·  🚆 train feed unavailable';
   if (t !== busText) { busEl.textContent = t; busEl.hidden = !t; busText = t; }
 }
 
