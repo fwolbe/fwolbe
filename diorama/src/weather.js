@@ -21,7 +21,7 @@ export async function fetchLive(lat, lon) {
   const c = (await r.json()).current;
   const code = c.weather_code;
   const w = { cloud: (c.cloud_cover ?? 0) / 100, rain: 0, snow: 0, fog: 0, wind: Math.min(1, (c.wind_speed_10m ?? 2) / 12),
-    windDir: c.wind_direction_10m ?? 220, temp: c.temperature_2m, code, cover: (c.snow_depth ?? 0) > 0.01 ? 1 : 0, live: true };
+    windDir: c.wind_direction_10m ?? 220, ms: c.wind_speed_10m ?? 2, temp: c.temperature_2m, code, cover: (c.snow_depth ?? 0) > 0.01 ? 1 : 0, live: true };
   if ([45, 48].includes(code)) w.fog = .85;
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) w.rain = Math.min(1, .35 + (c.precipitation ?? 0) / 3);
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) w.snow = Math.min(1, .45 + (c.snowfall ?? 0));

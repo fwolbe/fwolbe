@@ -50,6 +50,8 @@
   input[type=range] { flex: 1; min-width: 120px; accent-color: var(--yellow); height: 24px; }
   .lab { font: 700 10px Inter; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin-right: 2px; }
   .grow { flex: 1; }
+  .val.wide { min-width: 0; text-align: left; }
+  .needle { display: inline-block; width: 20px; text-align: center; color: var(--yellow); font-size: 16px; }
   .val { font: 600 12px Inter; color: var(--cream); min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
   #sunlbl { font: 600 11px Inter; color: var(--muted); font-variant-numeric: tabular-nums; }
   .row.first { flex-wrap: nowrap; }
@@ -90,6 +92,10 @@
   <div class="menu" id="m-wx">
     <div class="row"><span class="lab">Weather</span></div>
     <div class="row"><button data-wx="live">Live</button><button data-wx="clear">Clear</button><button data-wx="partly">Clouds</button><button data-wx="cloudy">Overcast</button><button data-wx="rain">Rain</button><button data-wx="snow">Snow</button><button data-wx="fog">Fog</button><button data-wx="storm">Storm</button></div>
+    <div class="row"><span class="lab">Wind</span><button id="wind-auto">Auto</button><span id="wind-out" class="val wide"></span></div>
+    <div class="row"><span class="lab">Strength</span><input id="wind-ms" type="range" min="0" max="25" step="1" aria-label="Wind strength in metres per second"></div>
+    <div class="row"><span class="lab">From</span><input id="wind-dir" type="range" min="0" max="355" step="5" aria-label="Wind direction, degrees it blows from">
+      <span class="needle" id="wind-needle" aria-hidden="true">➜</span></div>
   </div>
   <div class="menu" id="m-model">
     <div class="row"><span class="lab">Style</span><button data-style="cardboard">Cardboard</button><button data-style="white">Architect's white</button><button data-style="felt">Needle felt</button></div>

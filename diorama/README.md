@@ -55,7 +55,7 @@ secrets on the relay (`relay/README.md`). Weather (Open-Meteo) and all map data 
 URL options on a built page: `?t=16:30` fixes the time, `?weather=snow|rain|fog|clear|partly|cloudy|storm`,
 `?view=home|street|top|overview`, `?step=3` (contour layer in metres, `0` = smooth), `?exag=1.5`,
 `?tilt=0`, `?style=white|felt`, `?crop=120&shape=round|square` (crop is the half-size in metres),
-`?buses=<relay>`, `?busdebug` (red pins at the raw reported bus positions).
+`?wind=12&winddir=270` (wind by hand: m/s and the compass direction it blows from), `?buses=<relay>`, `?busdebug` (red pins at the raw reported bus positions).
 
 ## Next
 

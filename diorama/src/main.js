@@ -36,6 +36,7 @@ const state = {
   weatherMode: params.get('weather') || 'live', live_w: null, weather: { ...PRESETS.partly },
   step: Number(params.get('step') ?? 0), exag: Number(params.get('exag') ?? 1.5),
   tilt: params.get('tilt') !== '0', autoRotate: false,
+  windManual: params.has('wind') || params.has('winddir'), windMS: Number(params.get('wind') ?? 6), windDir: Number(params.get('winddir') ?? 230),
   style: STYLES[params.get('style')] != null ? params.get('style') : 'cardboard',
   crop: Number(params.get('crop') || 120), shape: params.get('shape') === 'square' ? 'square' : 'round',
 };
@@ -106,6 +107,21 @@ const terrainMat = cardboard(new THREE.MeshStandardMaterial({ roughness: .95 }),
         float l = dot(tex, vec3(.299, .587, .114));
         vec3 f = mix(mix(vec3(l), tex, 1.12), vec3(l) * 1.02 + .05, .16);
         diffuseColor.rgb = f * (.74 + .42 * feltFibre(vW, vWN)) * (.88 + .1 * fract(lv * .618) + .1 * hgt);
+      }
+      if (water) {
+        // wind on the water: along-wind wave bands drifting downwind, broken by noise; their
+        // contrast grows with the wind and whitecaps appear from about 8 m/s
+        vec2 wd = uWindTo, q = vec2(dot(vW.xz, wd), dot(vW.xz, vec2(-wd.y, wd.x)));
+        float ms = uWindMS, rough = smoothstep(.5, 10., ms);
+        float len = mix(1.6, 5.5, smoothstep(2., 16., ms));
+        float drift = uTime * (.6 + ms * .25);
+        float bands = sin((q.x - drift) / len * 6.2832 + vnoise(q * .07) * 7.);
+        float chop = vnoise(vec2((q.x - drift * 1.3) / len, q.y / (len * 2.5)));
+        float crest = smoothstep(.2, .95, bands * .5 + .5) * (.55 + .45 * chop);
+        vec3 base = diffuseColor.rgb;
+        diffuseColor.rgb = mix(base * (1. + .05 * vnoise(vW.xz * .05 + uTime * .02)), mix(base * .82, base * 1.18 + .04, crest), rough);
+        float cap = smoothstep(.78, .97, crest * (.7 + .3 * chop)) * smoothstep(7., 14., ms);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(.93, .95, .96), cap * .9);
       }
     } else if (vWN.y < -.5) {
       diffuseColor.rgb = vec3(.42, .32, .22);
@@ -270,10 +286,13 @@ function trafficDensity(d) {
   return Math.min(1, v);
 }
 function currentWeather() {
-  if (state.weatherMode === 'live') return state.live_w || PRESETS.partly;
-  return { ...PRESETS[state.weatherMode], windDir: state.live_w?.windDir ?? 230, temp: state.live_w?.temp };
+  let w = state.weatherMode === 'live' ? (state.live_w || PRESETS.partly)
+    : { ...PRESETS[state.weatherMode], windDir: state.live_w?.windDir ?? 230, temp: state.live_w?.temp };
+  w = { ...w, ms: w.ms ?? (w.wind ?? .3) * 12, windDir: w.windDir ?? 230 };
+  if (state.windManual) w = { ...w, ms: state.windMS, windDir: state.windDir, wind: Math.min(2, state.windMS / 12) };
+  return w;
 }
-const cur = { cloud: .3, rain: 0, snow: 0, fog: 0, wind: .3, cover: 0 };
+const cur = { cloud: .3, rain: 0, snow: 0, fog: 0, wind: .3, cover: 0, ms: 3, dirX: 0, dirZ: 1 };
 function applyLight(dt) {
   const p = sunPosition(state.time, LAT, LON);
   const altDeg = p.alt * 180 / Math.PI;
@@ -304,6 +323,12 @@ function applyLight(dt) {
   U.uSnow.value = cur.cover;
   ROAD_SNOW.value = cur.cover * .35;
   U.uWind.value = cur.wind;
+  // wind speed and the direction it blows toward (meteorological direction is where it comes from)
+  cur.ms += ((w.ms ?? 3) - cur.ms) * k;
+  const to = THREE.MathUtils.degToRad((w.windDir ?? 230) + 180);
+  cur.dirX += (Math.sin(to) - cur.dirX) * k; cur.dirZ += (-Math.cos(to) - cur.dirZ) * k;
+  U.uWindMS.value = cur.ms;
+  U.uWindTo.value.set(cur.dirX, cur.dirZ).normalize();
   bloom.strength = .15 + L.night * .85;
   bloom.threshold = .82 - L.night * .2;
   const golden = THREE.MathUtils.smoothstep(altDeg, -3, 2) * (1 - THREE.MathUtils.smoothstep(altDeg, 6, 16));

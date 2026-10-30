@@ -82,6 +82,21 @@ export function setupUI({ state, events, onTerrain, onTime, onView }) {
   crop.addEventListener('change', () => { state.crop = Number(crop.value); rebuildNow('plate'); });
   document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => onView(b.dataset.view)));
 
+  // wind: Auto follows the live or chosen weather; moving a slider takes over by hand
+  const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const compass = (d) => COMPASS[Math.round(((d % 360) + 360) % 360 / 45) % 8];
+  const beaufort = (ms) => ms < .5 ? 'calm' : ms < 3.4 ? 'light air' : ms < 8 ? 'breeze' : ms < 13.9 ? 'strong breeze' : ms < 20.8 ? 'gale' : 'storm';
+  const windMs = $('#wind-ms'), windDir = $('#wind-dir'), windAuto = $('#wind-auto'), windOut = $('#wind-out'), needle = $('#wind-needle');
+  function showWind(ms, dir) {
+    windOut.textContent = `${Math.round(ms)} m/s from ${compass(dir)} · ${beaufort(ms)}${state.windManual ? '' : ' (auto)'}`;
+    needle.style.transform = `rotate(${dir + 90}deg)`;   // arrow points where the wind goes, north up
+    windAuto.classList.toggle('on', !state.windManual);
+  }
+  const takeOver = () => { state.windManual = true; state.windMS = Number(windMs.value); state.windDir = Number(windDir.value); showWind(state.windMS, state.windDir); };
+  windMs.addEventListener('input', takeOver); windDir.addEventListener('input', takeOver);
+  windAuto.addEventListener('click', () => { state.windManual = false; });
+  windMs.value = state.windMS; windDir.value = state.windDir;
+
   let status = 'loading live weather…';
   function weatherStatus(w, err) { status = err ? 'No live feed' : ''; }
 
@@ -91,7 +106,9 @@ export function setupUI({ state, events, onTerrain, onTime, onView }) {
     const temp = w.temp != null ? `${Math.round(w.temp)}°` : '';
     const lbl = state.weatherMode === 'live' ? (w.live ? w.label : status || 'Live') : PRESETS[state.weatherMode].label;
     const ev = events();
-    const s = `${ICON[lbl] || ''} ${lbl} ${temp}`;
+    const s = `${ICON[lbl] || ''} ${lbl} ${temp} · 💨 ${Math.round(w.ms ?? 0)} m/s ${compass(w.windDir ?? 0)}`;
+    if (!state.windManual) { windMs.value = Math.round(w.ms ?? 0); windDir.value = Math.round((w.windDir ?? 0) / 5) * 5; }
+    showWind(state.windManual ? state.windMS : (w.ms ?? 0), state.windManual ? state.windDir : (w.windDir ?? 0));
     const sunTxt = `☀ ${ev.rise ? hm(ev.rise) : '–'}  ☾ ${ev.set ? hm(ev.set) : '–'}`;
     if (s + sunTxt !== last) { wxLabel.textContent = s; sunLbl.textContent = sunTxt; last = s + sunTxt; }
   }

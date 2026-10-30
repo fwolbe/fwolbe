@@ -7,6 +7,8 @@ export const U = {
   uWet: { value: 0 },       // 0..1 rain darkening
   uNight: { value: 0 },     // 0..1 how dark it is (windows, lamps)
   uWind: { value: 0.3 },    // 0..1 sway
+  uWindMS: { value: 3 },    // wind speed, m/s
+  uWindTo: { value: new (THREE.Vector2)(0, 1) },  // unit vector the wind blows toward, world x/z
   uStep: { value: 2 },      // contour step height, for the sheet seams
   uStyle: { value: 0 },     // 0 cardboard, 1 white architect's model, 2 needle felt
 };
@@ -83,7 +85,7 @@ export function cardboard(mat, opts = {}) {
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
         varying vec3 vW; varying vec3 vWN;
-        uniform float uTime, uSnow, uWet, uNight, uStep, uStyle;
+        uniform float uTime, uSnow, uWet, uNight, uStep, uStyle, uWindMS; uniform vec2 uWindTo;
         ${opts.cat ? '#define CAT_' + opts.cat : ''}
         ${NOISE}
         ${STYLE_GLSL}
