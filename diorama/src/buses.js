@@ -36,18 +36,58 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
   glow.count = 0;
   const group = new THREE.Group(); group.add(mesh, glow);
 
-  // every drivable street as segments, for snapping a reported position onto the road
-  const segs = [];
-  for (const e of graph.edges) for (let k = 1; k < e.pts.length; k++) segs.push([e.pts[k - 1], e.pts[k]]);
-  function snap(x, z) {
-    let best = null, bd = 25 * 25;
-    for (const [a, b] of segs) {
-      const dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
+  // Buses live on the street network: a report is matched to the nearest real street (never a
+  // driveway or service road), and between reports a bus drives along the streets, not across them.
+  const BUS_ROADS = new Set(['primary', 'secondary', 'tertiary', 'residential', 'unclassified', 'living_street']);
+  const edges = graph.edges.filter(e => BUS_ROADS.has(e.k)).map(e => {
+    const cum = [0];
+    for (let k = 1; k < e.pts.length; k++) cum.push(cum[k - 1] + Math.hypot(e.pts[k][0] - e.pts[k - 1][0], e.pts[k][1] - e.pts[k - 1][1]));
+    return Object.assign(e, { cum, len: cum[cum.length - 1] });
+  });
+  const MATCH_M = 15;
+  function match(x, z, hx, hz) {
+    let best = null, bd = MATCH_M * MATCH_M;
+    for (const e of edges) for (let k = 1; k < e.pts.length; k++) {
+      const a = e.pts[k - 1], b = e.pts[k], dx = b[0] - a[0], dz = b[1] - a[1], l2 = dx * dx + dz * dz || 1;
       const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / l2));
-      const px = a[0] + dx * t, pz = a[1] + dz * t, d = (px - x) ** 2 + (pz - z) ** 2;
-      if (d < bd) { bd = d; best = [px, pz, Math.atan2(dz, dx)]; }
+      const d2 = (a[0] + dx * t - x) ** 2 + (a[1] + dz * t - z) ** 2;
+      if (d2 < bd) {
+        bd = d2;
+        const along = hx * dx + hz * dz;
+        best = { e, d: e.cum[k - 1] + t * Math.sqrt(l2), dir: along === 0 ? 0 : Math.sign(along) };
+      }
     }
     return best;
+  }
+  function pointAt(e, d) {
+    d = Math.max(0, Math.min(e.len, d));
+    let k = 1; while (k < e.pts.length - 1 && e.cum[k] < d) k++;
+    const a = e.pts[k - 1], b = e.pts[k], seg = e.cum[k] - e.cum[k - 1] || 1, t = (d - e.cum[k - 1]) / seg;
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, Math.atan2(b[1] - a[1], b[0] - a[0])];
+  }
+  // drive `dist` metres from (e, d) in direction dir, taking the straightest street at junctions
+  function advance(pos, dist) {
+    let { e, d, dir } = pos;
+    if (!dir) return pos;
+    let left = dist;
+    for (let hop = 0; hop < 8; hop++) {
+      const room = dir > 0 ? e.len - d : d;
+      if (left <= room) return { e, d: d + dir * left, dir };
+      left -= room;
+      const node = dir > 0 ? e.b : e.a, [,, heading] = pointAt(e, dir > 0 ? e.len - .5 : .5);
+      const h = dir > 0 ? heading : heading + Math.PI;
+      let next = null, bestTurn = 1.6;   // never turn sharper than ~90 degrees
+      for (const o of node.out) {
+        if (o.e === e || !BUS_ROADS.has(o.e.k) || !o.e.cum) continue;
+        const [,, h2] = pointAt(o.e, o.dir > 0 ? .5 : o.e.len - .5);
+        const out = o.dir > 0 ? h2 : h2 + Math.PI;
+        const turn = Math.abs(((out - h + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+        if (turn < bestTurn) { bestTurn = turn; next = o; }
+      }
+      if (!next) return { e, d: dir > 0 ? e.len : 0, dir };   // end of the known streets: wait there
+      e = next.e; dir = next.dir; d = dir > 0 ? 0 : e.len;
+    }
+    return { e, d, dir };
   }
 
   const buses = new Map();
@@ -61,12 +101,18 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
       const now = Date.now() / 1000, seen = new Set();
       for (const b of j.buses) {
         const [x, z] = local(b.lat, b.lon);
-        const speed = b.speed ?? 0, head = b.bearing != null ? b.bearing * Math.PI / 180 : null;
-        // GTFS bearing: degrees clockwise from north; local x is east, z is south
-        const vx = head != null ? Math.sin(head) * speed : 0, vz = head != null ? -Math.cos(head) * speed : 0;
         const prev = buses.get(b.id);
-        const rec = { id: b.id, route: b.route, rx: x, rz: z, vx, vz, ts: Math.min(b.ts || now, now), x: prev ? prev.x : x, z: prev ? prev.z : z, yaw: prev ? prev.yaw : (head != null ? Math.atan2(vz, vx) : 0) };
-        buses.set(b.id, rec); seen.add(b.id);
+        // GTFS bearing: degrees clockwise from north; local x is east, z is south
+        const head = b.bearing != null ? b.bearing * Math.PI / 180 : null;
+        let hx = head != null ? Math.sin(head) : 0, hz = head != null ? -Math.cos(head) : 0;
+        if (head == null && prev) { hx = x - prev.rx; hz = z - prev.rz; }
+        const on = match(x, z, hx, hz);
+        seen.add(b.id);
+        if (!on) { buses.delete(b.id); continue; }       // not on a street we know: don't invent one
+        if (!on.dir && prev && prev.on && prev.on.e === on.e) on.dir = prev.on.dir;
+        const [px, pz] = pointAt(on.e, on.d);
+        buses.set(b.id, { id: b.id, route: b.route, rx: x, rz: z, on, speed: Math.min(b.speed ?? 0, 20), ts: Math.min(b.ts || now, now),
+          x: prev ? prev.x : px, z: prev ? prev.z : pz, yaw: prev ? prev.yaw : pointAt(on.e, on.d)[2] + (on.dir < 0 ? Math.PI : 0) });
       }
       for (const id of [...buses.keys()]) if (!seen.has(id)) buses.delete(id);
       status.state = 'live'; status.count = buses.size; status.error = null;
@@ -83,16 +129,16 @@ export function buildBuses(data, field, graph, getPlate, relayUrl) {
     let i = 0, near = 0;
     const now = Date.now() / 1000;
     for (const b of buses.values()) {
-      // where the bus should be now: last report plus its motion since, capped at 30 s
-      const age = Math.min(30, Math.max(0, now - b.ts));
-      let tx = b.rx + b.vx * age, tz = b.rz + b.vz * age;
-      const s = snap(tx, tz);
-      if (s) { tx = s[0]; tz = s[1]; }
-      const k = 1 - Math.exp(-dt * 1.5);
+      // where the bus should be now: its matched street position driven on by speed x time
+      // since the report (capped at 25 s), along the streets
+      const age = Math.min(25, Math.max(0, now - b.ts));
+      const pos = advance(b.on, b.speed * age);
+      const [tx, tz, th] = pointAt(pos.e, pos.d);
+      const k = 1 - Math.exp(-dt * 2);
       const dx = tx - b.x, dz = tz - b.z;
-      if (Math.hypot(dx, dz) > 120) { b.x = tx; b.z = tz; } else { b.x += dx * k; b.z += dz * k; }
-      if (Math.hypot(dx, dz) > .3) b.yaw = Math.atan2(dz, dx);
-      else if (s) { const a = s[2]; b.yaw = Math.abs(((a - b.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < Math.PI / 2 ? a : a + Math.PI; }
+      if (Math.hypot(dx, dz) > 40) { b.x = tx; b.z = tz; } else { b.x += dx * k; b.z += dz * k; }
+      const want = th + (pos.dir < 0 ? Math.PI : 0);
+      if (pos.dir) b.yaw += (((want - b.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * k;
       if (!live || !plate.inside(b.x, b.z, 6) || i >= MAX) continue;
       near++;
       q.setFromAxisAngle(up, -b.yaw);
