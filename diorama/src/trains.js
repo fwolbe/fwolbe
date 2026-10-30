@@ -39,8 +39,11 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
     return { pts: r.p, cum, len: cum[cum.length - 1] };
   });
   const group = new THREE.Group();
-  const status = { state: relayUrl && lines.length ? 'connecting' : 'off', count: 0, near: 0 };
-  if (!lines.length || !relayUrl) return { group, update() {}, status, dispose() {} };
+  // ?trainsim: a made-up train shuttling along the longest line, fed through the same code path as
+  // the live feed; needs no relay, key or network
+  const sim = new URLSearchParams(location.search).has('trainsim');
+  const status = { state: (relayUrl || sim) && lines.length ? 'connecting' : 'off', count: 0, near: 0 };
+  if (!lines.length || !(relayUrl || sim)) return { group, update() {}, status, dispose() {} };
 
   const MAX = 6;
   const mat = cardboard(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .7 }), { key: 'train' });
@@ -71,12 +74,33 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
     return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
   }
 
+  const simLine = lines.reduce((a, b) => b.len > a.len ? b : a);
+  function simFeed() {
+    // shuttle over the stretch of the longest line that is on the plate, running 60 m past each end
+    // so it drives on and off; 15 m/s
+    const plate = getPlate();
+    let lo = Infinity, hi = -Infinity;
+    for (let d = 0; d <= simLine.len; d += 5) { const [x, z] = pointAt(simLine, d); if (plate.inside(x, z, 0)) { lo = Math.min(lo, d); hi = Math.max(hi, d); } }
+    if (lo > hi) return { trains: [] };
+    lo = Math.max(0, lo - 60); hi = Math.min(simLine.len, hi + 60);
+    const v = 15, span = hi - lo, t = Date.now() / 1000, u = (t * v) % (2 * span);
+    const fwd = u < span, d = lo + (fwd ? u : 2 * span - u);
+    const [x, z] = pointAt(simLine, d), [x2, z2] = pointAt(simLine, d + (fwd ? 5 : -5));
+    const bearing = (Math.atan2(x2 - x, -(z2 - z)) * 180 / Math.PI + 360) % 360;
+    return { trains: [{ id: 'sim', lat: lat0 - z / MY, lon: lon0 + x / MX, speed: v, bearing, ts: t }] };
+  }
+
   const trains = new Map();
   async function poll() {
     try {
+      if (sim) { apply(simFeed()); return; }
       const r = await fetch(relayUrl.replace(/\/$/, '') + '/trains' + (siteId ? '?site=' + encodeURIComponent(siteId) : ''), { cache: 'no-store' });
       const j = await r.json();
       if (!r.ok || j.error) throw new Error(j.error || r.status);
+      apply(j);
+    } catch (e) { status.state = 'error'; status.error = String(e.message || e); }
+  }
+  function apply(j) {
       const now = Date.now() / 1000, seen = new Set();
       for (const t of j.trains) {
         const [x, z] = local(t.lat, t.lon), prev = trains.get(t.id);
@@ -94,10 +118,9 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
       }
       for (const id of [...trains.keys()]) if (!seen.has(id)) trains.delete(id);
       status.state = 'live'; status.count = trains.size;
-    } catch (e) { status.state = 'error'; status.error = String(e.message || e); }
   }
   poll();
-  const timer = setInterval(poll, POLL_MS);
+  const timer = setInterval(poll, sim ? 5000 : POLL_MS);
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
   function update(dt, live, night) {
