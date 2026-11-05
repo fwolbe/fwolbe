@@ -114,12 +114,13 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
           const h = t.bearing * Math.PI / 180, a = on.ln.pts[on.k - 1], b = on.ln.pts[on.k];
           dir = Math.sign(Math.sin(h) * (b[0] - a[0]) - Math.cos(h) * (b[1] - a[1])) || 1;
         }
-        // Trafikverket often leaves speed out: estimate it from the distance run along the line since
+        // Trafikverket sends speed (km/h, m/s from the relay) for some trains only: otherwise estimate it from the distance run along the line since
         // the previous report
         const ts = Math.min(t.ts || now, now);
+        // (a reported 0 is believed only if the train hasn't moved)
         let speed = t.speed;
-        if (speed == null && prev && prev.on.ln === on.ln && ts - prev.ts > 2) speed = Math.abs(on.d - prev.on.d) / (ts - prev.ts);
-        else if (speed == null && prev) speed = prev.speed;
+        const est = prev && prev.on.ln === on.ln && ts - prev.ts > 2 ? Math.abs(on.d - prev.on.d) / (ts - prev.ts) : null;
+        if (speed == null || (speed === 0 && est > 2)) speed = est ?? (prev ? prev.speed : null);
         trains.set(t.id, { on, dir: dir || 1, speed: Math.min(speed ?? 0, 60), ts, shown: prev ? prev.shown : on.d });
       }
       for (const id of [...trains.keys()]) if (!seen.has(id)) trains.delete(id);
