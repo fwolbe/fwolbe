@@ -114,7 +114,13 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
           const h = t.bearing * Math.PI / 180, a = on.ln.pts[on.k - 1], b = on.ln.pts[on.k];
           dir = Math.sign(Math.sin(h) * (b[0] - a[0]) - Math.cos(h) * (b[1] - a[1])) || 1;
         }
-        trains.set(t.id, { on, dir: dir || 1, speed: Math.min(t.speed ?? 0, 60), ts: Math.min(t.ts || now, now), shown: prev ? prev.shown : on.d });
+        // Trafikverket often leaves speed out: estimate it from the distance run along the line since
+        // the previous report
+        const ts = Math.min(t.ts || now, now);
+        let speed = t.speed;
+        if (speed == null && prev && prev.on.ln === on.ln && ts - prev.ts > 2) speed = Math.abs(on.d - prev.on.d) / (ts - prev.ts);
+        else if (speed == null && prev) speed = prev.speed;
+        trains.set(t.id, { on, dir: dir || 1, speed: Math.min(speed ?? 0, 60), ts, shown: prev ? prev.shown : on.d });
       }
       for (const id of [...trains.keys()]) if (!seen.has(id)) trains.delete(id);
       status.state = 'live'; status.count = trains.size;
