@@ -14,6 +14,7 @@
 //   CACHE_S           seconds to reuse one operator's feed, default 20                 (var)
 //   TRAFIKVERKET_KEY  Trafikverket open API key, for /trains                          (secret)
 //   TRAIN_RADIUS_M    how far out to include trains, default 4000                      (var)
+//   TRAIN_MAX_AGE_S   ignore train positions older than this, default 180              (var)
 //
 //   GET /trains?site=<site>   live train positions near the site (Trafikverket TrainPosition)
 import { decodeVehiclePositions } from './gtfsrt.js';
@@ -94,8 +95,11 @@ async function trains(req, env, ctx, url) {
   if (!up.ok) return json({ error: `trafikverket ${up.status}`, detail: (await up.text()).slice(0, 300) }, 502);
   const res = (await up.json()).RESPONSE?.RESULT?.[0] || {};
   if (res.ERROR) return json({ error: 'trafikverket', detail: res.ERROR }, 502);
-  const out = [];
+  // a train that has finished its run stays Active with its last position for hours or days:
+  // keep only positions reported in the last few minutes
+  const out = [], fresh = Date.now() - Number(env.TRAIN_MAX_AGE_S || 180) * 1000;
   for (const t of res.TrainPosition || []) {
+    if (t.Deleted || !t.TimeStamp || Date.parse(t.TimeStamp) < fresh) continue;
     const m = /POINT \(([-\d.]+) ([-\d.]+)\)/.exec(t.Position?.WGS84 || '');
     if (!m) continue;
     out.push({
