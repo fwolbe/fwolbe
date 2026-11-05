@@ -57,6 +57,14 @@ URL options on a built page: `?t=16:30` fixes the time, `?weather=snow|rain|fog|
 `?tilt=0`, `?style=white|felt`, `?crop=120&shape=round|square` (crop is the half-size in metres),
 `?wind=12&winddir=270` (wind by hand: m/s and the compass direction it blows from), `?buses=<relay>`, `?busdebug` (red pins at the raw reported bus positions), `?trainsim` (a made-up train shuttling along the railway, to test trains without a key or network).
 
+## Hosting (free)
+
+`node scripts/pack.mjs` gathers every built site into `dist/hosted/` (one folder per site plus a small index
+page). Upload that folder to a Cloudflare Pages project with direct upload and put it behind Cloudflare
+Access; Pages, Access (up to 50 users) and the relay worker all fit Cloudflare's free plans. Pages only poll
+the relay while visible, and the relay answers repeated requests from memory, so the Trafiklab and
+Trafikverket keys are called at most once per `CACHE_S` however many pages are open.
+
 ## Next
 
 - Line numbers on buses (needs the GTFS Regional Static feed for route names).

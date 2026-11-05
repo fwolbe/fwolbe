@@ -92,6 +92,7 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
 
   const trains = new Map();
   async function poll() {
+    if (document.hidden) return;        // no polling from a background tab
     try {
       if (sim) { apply(simFeed()); return; }
       const r = await fetch(relayUrl.replace(/\/$/, '') + '/trains' + (siteId ? '?site=' + encodeURIComponent(siteId) : ''), { cache: 'no-store' });
@@ -127,6 +128,7 @@ export function buildTrains(data, field, getPlate, relayUrl, siteId) {
       status.state = 'live'; status.count = trains.size;
   }
   poll();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   const timer = setInterval(poll, sim ? 5000 : POLL_MS);
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();

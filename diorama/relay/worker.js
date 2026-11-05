@@ -42,16 +42,24 @@ function siteConfig(env, id) {
   return { center: env.CENTER, operator: env.OPERATOR || 'jlt', radius: Number(env.RADIUS_M || 1500) };
 }
 
+// The Cache API does nothing on a workers.dev address, so each upstream answer is also kept in this
+// isolate's memory: a busy relay then calls Trafiklab and Trafikverket at most once per CACHE_S
+const memo = new Map();
+function remember(key, ttl, value) { memo.set(key, { until: Date.now() + ttl * 1000, value }); return value; }
+function recall(key) { const m = memo.get(key); return m && m.until > Date.now() ? m.value : null; }
+
 // one operator's decoded feed, shared by every site on it for CACHE_S seconds
 async function operatorBuses(env, ctx, op, origin) {
   const ttl = Number(env.CACHE_S || 20);
+  const mem = recall('bus:' + op);
+  if (mem) return mem;
   const cache = caches.default, key = new Request(`${origin}/feed-cache/${op}`);
   const hit = await cache.match(key);
-  if (hit) return hit.json();
+  if (hit) return remember('bus:' + op, ttl, await hit.json());
   const up = await fetch(FEED(op, env.TRAFIKLAB_RT_KEY), { headers: { 'Accept-Encoding': 'gzip' } });
   if (!up.ok) throw new Error(`trafiklab ${up.status}`);
   const all = decodeVehiclePositions(new Uint8Array(await up.arrayBuffer()));
-  const body = { fetched: Math.floor(Date.now() / 1000), all };
+  const body = remember('bus:' + op, ttl, { fetched: Math.floor(Date.now() / 1000), all });
   ctx.waitUntil(cache.put(key, new Response(JSON.stringify(body), { headers: { 'Cache-Control': `public, max-age=${ttl}` } })));
   return body;
 }
@@ -84,6 +92,8 @@ async function trains(req, env, ctx, url) {
   if (site.error) return json({ error: site.error }, 400);
   const [lat, lon] = site.center.split(',').map(Number), radius = Number(env.TRAIN_RADIUS_M || 4000);
   const cache = caches.default, key = new Request(`${url.origin}/trains-cache/${lat.toFixed(4)},${lon.toFixed(4)},${radius}`);
+  const mem = recall(key.url);
+  if (mem) return json(mem);
   const hit = await cache.match(key);
   if (hit) return new Response(hit.body, { headers: { 'Content-Type': 'application/json', ...CORS } });
   const body = `<REQUEST><LOGIN authenticationkey="${env.TRAFIKVERKET_KEY}"/>` +
@@ -109,7 +119,7 @@ async function trains(req, env, ctx, url) {
       speed: t.Speed != null ? t.Speed / 3.6 : null, ts: t.TimeStamp ? Math.floor(Date.parse(t.TimeStamp) / 1000) : null,
     });
   }
-  const resp = json({ fetched: Math.floor(Date.now() / 1000), trains: out }, 200, { 'Cache-Control': `public, max-age=${Number(env.CACHE_S || 20)}` });
+  const resp = json(remember(key.url, Number(env.CACHE_S || 20), { fetched: Math.floor(Date.now() / 1000), trains: out }), 200, { 'Cache-Control': `public, max-age=${Number(env.CACHE_S || 20)}` });
   ctx.waitUntil(cache.put(key, resp.clone()));
   return resp;
 }

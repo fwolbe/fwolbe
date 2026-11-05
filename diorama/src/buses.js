@@ -50,6 +50,7 @@ export function buildBuses(data, field, graph, getPlate, relayUrl, siteId) {
   const status = { state: relayUrl ? 'connecting' : 'off', count: 0, near: 0, error: null };
   async function poll() {
     if (!relayUrl) return;
+    if (document.hidden) return;        // no polling from a background tab
     try {
       const r = await fetch(relayUrl.replace(/\/$/, '') + '/buses' + (siteId ? '?site=' + encodeURIComponent(siteId) : ''), { cache: 'no-store' });
       const j = await r.json();
@@ -85,6 +86,7 @@ export function buildBuses(data, field, graph, getPlate, relayUrl, siteId) {
     }
   }
   poll();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
   const timer = setInterval(poll, POLL_MS);
 
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
